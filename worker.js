@@ -2,116 +2,55 @@
 /// <reference lib="esnext" />
 /// <reference types="@cloudflare/workers-types" />
 import { DurableObject } from "cloudflare:workers";
-//@ts-ignore
-import indexHtml from "./public/index.html";
 
 /**
  * @typedef Env
- * @property {DurableObjectNamespace<TaskStoreDO>} TASKSTORE
- * @property {string} PARALLEL_API_KEY - Parallel API key
+ * @property {DurableObjectNamespace<MainDO>} MAIN_DO
+ * @property {DurableObjectNamespace<TaskDO>} TASK_DO
  */
 
 export default {
   /** @param {Request} request @param {Env} env @param {ExecutionContext} ctx @returns {Promise<Response>} */
   async fetch(request, env, ctx) {
-    // Check for required environment variables
-    if (!env.PARALLEL_API_KEY) {
-      return new Response("Missing PARALLEL_API_KEY environment variable", {
-        status: 500,
-      });
-    }
-
     const url = new URL(request.url);
-    const taskStore = env.TASKSTORE.get(env.TASKSTORE.idFromName("main"));
+    const path = url.pathname;
 
-    if (url.pathname === "/" && request.method === "GET") {
-      return new Response(indexHtml, {
-        headers: { "Content-Type": "text/html" },
-      });
+    // API routes
+    const mainDO = env.MAIN_DO.get(env.MAIN_DO.idFromName("main"));
+
+    if (path === "/api/tasks" && request.method === "POST") {
+      return mainDO.createTask(request, env);
+    } else if (path === "/api/tasks" && request.method === "GET") {
+      return mainDO.getTasks();
+    } else if (path.startsWith("/api/task/") && request.method === "GET") {
+      const taskId = path.split("/")[3];
+      return mainDO.getTask(taskId);
     }
 
-    if (url.pathname === "/api/tasks" && request.method === "POST") {
-      const { input, processor = "lite" } = await request.json();
-      if (!input) {
-        return new Response(JSON.stringify({ error: "Input is required" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      const result = await taskStore.createTask(
-        input,
-        processor,
-        env.PARALLEL_API_KEY
-      );
-      return new Response(JSON.stringify(result), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (url.pathname === "/api/tasks" && request.method === "GET") {
-      const tasks = await taskStore.getAllTasks();
-      return new Response(JSON.stringify(tasks), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (url.pathname.startsWith("/task/") && request.method === "GET") {
-      const taskId = url.pathname.split("/")[2];
-      const task = await taskStore.getTask(taskId);
-      if (!task) {
-        return new Response("Task not found", { status: 404 });
-      }
-
-      return new Response(JSON.stringify(task, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (
-      url.pathname.startsWith("/api/task/") &&
-      url.pathname.endsWith("/detail") &&
-      request.method === "GET"
-    ) {
-      const taskId = url.pathname.split("/")[3];
-      const task = await taskStore.getTask(taskId);
-      return new Response(JSON.stringify(task || null), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not found", { status: 404 });
   },
 };
 
-export class TaskStoreDO extends DurableObject {
-  /** @param {string} name */
-  get = (name) => this.env.TASKSTORE.get(this.env.TASKSTORE.idFromName(name));
-
+export class MainDO extends DurableObject {
   /** @param {DurableObjectState} state @param {Env} env */
   constructor(state, env) {
     super(state, env);
     this.sql = state.storage.sql;
     this.env = env;
-    this.initTables();
-  }
 
-  initTables() {
-    // Create tasks table
+    // Initialize tables
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         input TEXT NOT NULL,
         processor TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'queued',
+        run_id TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        result TEXT,
-        parallel_run_id TEXT
+        updated_at TEXT NOT NULL
       )
     `);
 
-    // Create events table
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS task_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,35 +63,129 @@ export class TaskStoreDO extends DurableObject {
     `);
   }
 
-  /**
-   * @param {string} input
-   * @param {string} processor
-   * @param {string} apiKey
-   */
-  async createTask(input, processor, apiKey) {
+  /** @param {Request} request @param {Env} env */
+  async createTask(request, env) {
+    const { input, processor, apiKey } = await request.json();
+
+    if (!input || !processor || !apiKey) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const taskId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Insert task into database
+    // Store task in database
     this.sql.exec(
-      "INSERT INTO tasks (id, input, processor, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, input, processor, status, created_at, updated_at) VALUES (?, ?, ?, 'queued', ?, ?)",
       taskId,
       input,
       processor,
-      "creating",
       now,
       now
     );
 
-    // Create task in Parallel API
+    // Create TaskDO and start processing
+    const taskDO = env.TASK_DO.get(env.TASK_DO.idFromName(taskId));
+    taskDO.startTask(taskId, input, processor, apiKey);
+
+    return new Response(JSON.stringify({ taskId }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  async getTasks() {
+    const tasks = this.sql
+      .exec("SELECT * FROM tasks ORDER BY created_at DESC")
+      .toArray();
+    return new Response(JSON.stringify(tasks), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  /** @param {string} taskId */
+  async getTask(taskId) {
+    const task = this.sql
+      .exec("SELECT * FROM tasks WHERE id = ?", taskId)
+      .toArray()[0];
+    if (!task) {
+      return new Response(JSON.stringify({ error: "Task not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const events = this.sql
+      .exec(
+        "SELECT * FROM task_events WHERE task_id = ? ORDER BY timestamp ASC",
+        taskId
+      )
+      .toArray();
+
+    return new Response(JSON.stringify({ task, events }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  /** @param {string} taskId @param {string} status @param {string} runId */
+  async updateTaskStatus(taskId, status, runId = null) {
+    const now = new Date().toISOString();
+    if (runId) {
+      this.sql.exec(
+        "UPDATE tasks SET status = ?, run_id = ?, updated_at = ? WHERE id = ?",
+        status,
+        runId,
+        now,
+        taskId
+      );
+    } else {
+      this.sql.exec(
+        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
+        status,
+        now,
+        taskId
+      );
+    }
+  }
+
+  /** @param {string} taskId @param {string} eventType @param {any} eventData */
+  async addTaskEvent(taskId, eventType, eventData) {
+    const now = new Date().toISOString();
+    this.sql.exec(
+      "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
+      taskId,
+      eventType,
+      JSON.stringify(eventData),
+      now
+    );
+  }
+}
+
+export class TaskDO extends DurableObject {
+  /** @param {DurableObjectState} state @param {Env} env */
+  constructor(state, env) {
+    super(state, env);
+    this.env = env;
+  }
+
+  /** @param {string} taskId @param {string} input @param {string} processor @param {string} apiKey */
+  async startTask(taskId, input, processor, apiKey) {
+    const mainDO = this.env.MAIN_DO.get(this.env.MAIN_DO.idFromName("main"));
+
     try {
+      // Create task run via Parallel API
       const createResponse = await fetch(
         "https://api.parallel.ai/v1/tasks/runs",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
             "x-api-key": apiKey,
+            "content-type": "application/json",
             "parallel-beta": "events-sse-2025-07-24",
           },
           body: JSON.stringify({
@@ -164,73 +197,46 @@ export class TaskStoreDO extends DurableObject {
       );
 
       if (!createResponse.ok) {
-        throw new Error(
-          `Failed to create task: ${createResponse.status} ${createResponse.statusText}`
-        );
+        const error = await createResponse.text();
+        await mainDO.updateTaskStatus(taskId, "failed");
+        await mainDO.addTaskEvent(taskId, "error", { message: error });
+        return;
       }
 
       const taskRun = await createResponse.json();
+      const runId = taskRun.run_id;
 
-      // Update task with parallel run ID
-      this.sql.exec(
-        "UPDATE tasks SET parallel_run_id = ?, status = ?, updated_at = ? WHERE id = ?",
-        taskRun.run_id,
-        taskRun.status,
-        new Date().toISOString(),
-        taskId
-      );
+      await mainDO.updateTaskStatus(taskId, "running", runId);
+      await mainDO.addTaskEvent(taskId, "created", taskRun);
 
-      // Start listening to SSE events
-      this.listenToEvents(taskId, taskRun.run_id, apiKey);
+      // Start SSE stream for events
+      this.streamEvents(taskId, runId, apiKey, mainDO);
 
-      return { taskId, parallelRunId: taskRun.run_id, status: taskRun.status };
+      // Poll for completion
+      this.pollForCompletion(taskId, runId, apiKey, mainDO);
     } catch (error) {
-      // Update task status to failed
-      this.sql.exec(
-        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
-        "failed",
-        new Date().toISOString(),
-        taskId
-      );
-
-      // Store error event
-      this.sql.exec(
-        "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
-        taskId,
-        "error",
-        JSON.stringify({ error: error.message }),
-        new Date().toISOString()
-      );
-
-      throw error;
+      await mainDO.updateTaskStatus(taskId, "failed");
+      await mainDO.addTaskEvent(taskId, "error", { message: error.message });
     }
   }
 
-  /**
-   * @param {string} taskId
-   * @param {string} parallelRunId
-   * @param {string} apiKey
-   */
-  async listenToEvents(taskId, parallelRunId, apiKey) {
+  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} mainDO */
+  async streamEvents(taskId, runId, apiKey, mainDO) {
     try {
-      const sseResponse = await fetch(
-        `https://api.parallel.ai/v1beta/tasks/runs/${parallelRunId}/events`,
+      const eventResponse = await fetch(
+        `https://api.parallel.ai/v1beta/tasks/runs/${runId}/events`,
         {
           headers: {
             "x-api-key": apiKey,
-            Accept: "text/event-stream",
+            "content-type": "text/event-stream",
           },
         }
       );
 
-      if (!sseResponse.ok) {
-        throw new Error(`Failed to connect to SSE: ${sseResponse.status}`);
-      }
+      if (!eventResponse.ok) return;
 
-      const reader = sseResponse.body?.getReader();
-      if (!reader) {
-        throw new Error("No reader available for SSE stream");
-      }
+      const reader = eventResponse.body?.getReader();
+      if (!reader) return;
 
       const decoder = new TextDecoder();
       let buffer = "";
@@ -247,135 +253,70 @@ export class TaskStoreDO extends DurableObject {
           if (line.startsWith("data: ")) {
             try {
               const eventData = JSON.parse(line.slice(6));
-              await this.handleEvent(taskId, eventData);
+              await mainDO.addTaskEvent(
+                taskId,
+                eventData.type || "stream",
+                eventData
+              );
             } catch (e) {
-              console.error("Failed to parse SSE event:", e);
+              // Ignore malformed JSON
             }
           }
         }
       }
-
-      // Get final result
-      await this.getFinalResult(taskId, parallelRunId, apiKey);
     } catch (error) {
-      console.error("SSE Error:", error);
-      this.sql.exec(
-        "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
-        taskId,
-        "sse_error",
-        JSON.stringify({ error: error.message }),
-        new Date().toISOString()
-      );
+      await mainDO.addTaskEvent(taskId, "stream_error", {
+        message: error.message,
+      });
     }
   }
 
-  /**
-   * @param {string} taskId
-   * @param {any} eventData
-   */
-  async handleEvent(taskId, eventData) {
-    const now = new Date().toISOString();
+  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} mainDO */
+  async pollForCompletion(taskId, runId, apiKey, mainDO) {
+    const maxAttempts = 60; // 10 minutes max
+    let attempts = 0;
 
-    // Store event
-    this.sql.exec(
-      "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
-      taskId,
-      eventData.type || "unknown",
-      JSON.stringify(eventData),
-      now
-    );
+    while (attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 10000)); // Wait 10 seconds
+      attempts++;
 
-    // Update task status if it's a status event
-    if (eventData.type === "run_status" && eventData.status) {
-      this.sql.exec(
-        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
-        eventData.status,
-        now,
-        taskId
-      );
-    }
-  }
+      try {
+        const statusResponse = await fetch(
+          `https://api.parallel.ai/v1/tasks/runs/${runId}`,
+          {
+            headers: { "x-api-key": apiKey },
+          }
+        );
 
-  /**
-   * @param {string} taskId
-   * @param {string} parallelRunId
-   * @param {string} apiKey
-   */
-  async getFinalResult(taskId, parallelRunId, apiKey) {
-    try {
-      const resultResponse = await fetch(
-        `https://api.parallel.ai/v1/tasks/runs/${parallelRunId}/result`,
-        {
-          headers: {
-            "x-api-key": apiKey,
-          },
+        if (!statusResponse.ok) continue;
+
+        const taskRun = await statusResponse.json();
+
+        if (taskRun.status === "completed") {
+          // Get results
+          const resultResponse = await fetch(
+            `https://api.parallel.ai/v1/tasks/runs/${runId}/result`,
+            {
+              headers: { "x-api-key": apiKey },
+            }
+          );
+
+          if (resultResponse.ok) {
+            const result = await resultResponse.json();
+            await mainDO.updateTaskStatus(taskId, "completed");
+            await mainDO.addTaskEvent(taskId, "completed", result);
+          }
+          break;
+        } else if (taskRun.status === "failed") {
+          await mainDO.updateTaskStatus(taskId, "failed");
+          await mainDO.addTaskEvent(taskId, "failed", taskRun);
+          break;
         }
-      );
-
-      if (resultResponse.ok) {
-        const result = await resultResponse.json();
-        const now = new Date().toISOString();
-
-        // Store final result
-        this.sql.exec(
-          "UPDATE tasks SET result = ?, status = ?, updated_at = ? WHERE id = ?",
-          JSON.stringify(result),
-          "completed",
-          now,
-          taskId
-        );
-
-        // Store result event
-        this.sql.exec(
-          "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
-          taskId,
-          "final_result",
-          JSON.stringify(result),
-          now
-        );
+      } catch (error) {
+        await mainDO.addTaskEvent(taskId, "poll_error", {
+          message: error.message,
+        });
       }
-    } catch (error) {
-      console.error("Failed to get final result:", error);
     }
-  }
-
-  async getAllTasks() {
-    const result = this.sql.exec(
-      "SELECT * FROM tasks ORDER BY created_at DESC"
-    );
-    return result.toArray();
-  }
-
-  /**
-   * @param {string} taskId
-   */
-  async getTask(taskId) {
-    const taskResult = this.sql.exec(
-      "SELECT * FROM tasks WHERE id = ?",
-      taskId
-    );
-    const tasks = taskResult.toArray();
-
-    if (tasks.length === 0) {
-      return null;
-    }
-
-    const task = tasks[0];
-
-    // Get all events for this task
-    const eventsResult = this.sql.exec(
-      "SELECT * FROM task_events WHERE task_id = ? ORDER BY timestamp ASC",
-      taskId
-    );
-    const events = eventsResult.toArray().map((event) => ({
-      ...event,
-      event_data: JSON.parse(event.event_data),
-    }));
-
-    return {
-      ...task,
-      result: task.result ? JSON.parse(task.result) : null,
-      events,
-    };
   }
 }

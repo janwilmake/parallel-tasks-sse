@@ -4,41 +4,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parallel API Task Runner</title>
+    <title>Parallel API Task Manager</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        .container {
-            background: #f8f9fa;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            height: 100vh;
+        }
+
+        .left-panel {
+            flex: 1;
             padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            background: white;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+        }
+
+        .right-panel {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        input[type="password"] {
+            font-family: monospace;
         }
 
         textarea {
-            width: 100%;
-            min-height: 120px;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: monospace;
+            min-height: 100px;
             resize: vertical;
         }
 
         button {
             background: #007bff;
             color: white;
-            padding: 10px 20px;
             border: none;
-            border-radius: 4px;
+            padding: 12px 24px;
+            border-radius: 6px;
             cursor: pointer;
-            margin: 10px 0;
+            font-size: 14px;
+            font-weight: 500;
         }
 
         button:hover {
@@ -46,39 +79,33 @@
         }
 
         button:disabled {
-            background: #6c757d;
+            background: #ccc;
             cursor: not-allowed;
         }
 
-        select {
-            padding: 8px;
-            margin: 0 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        table {
+        .tasks-table {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        th,
-        td {
+        .tasks-table th,
+        .tasks-table td {
             padding: 12px;
             text-align: left;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #e0e0e0;
         }
 
-        th {
+        .tasks-table th {
             background: #f8f9fa;
             font-weight: 600;
+            color: #495057;
         }
 
-        tr:hover {
+        .tasks-table tr:hover {
             background: #f8f9fa;
             cursor: pointer;
         }
@@ -87,7 +114,7 @@
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 500;
             text-transform: uppercase;
         }
 
@@ -111,21 +138,41 @@
             color: #721c24;
         }
 
-        .input-preview {
-            max-width: 300px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        .task-detail {
+            background: white;
+            border-radius: 6px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .json-display {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: #333;
+            margin-bottom: 15px;
         }
 
         .loading {
             text-align: center;
-            padding: 20px;
             color: #666;
+            font-style: italic;
         }
 
         .error {
-            color: #721c24;
+            color: #dc3545;
             background: #f8d7da;
             padding: 10px;
             border-radius: 4px;
@@ -135,206 +182,201 @@
 </head>
 
 <body>
-    <h1>🚀 Parallel API Task Runner</h1>
+    <div class="left-panel">
+        <h1>Parallel API Task Manager</h1>
 
-    <div class="container">
-        <h2>Create New Task</h2>
-        <form id="taskForm">
-            <div>
-                <label for="taskInput">Task Input:</label>
-                <textarea id="taskInput" placeholder="Enter your research question or task description..."></textarea>
-            </div>
-            <div>
-                <label for="processor">Processor:</label>
-                <select id="processor">
-                    <option value="lite">Lite</option>
-                    <option value="base">Base</option>
-                    <option value="core">Core</option>
-                    <option value="pro">Pro</option>
-                    <option value="ultra">Ultra</option>
-                </select>
-                <button type="submit" id="submitBtn">Create Task</button>
-            </div>
-        </form>
-        <div id="createError" class="error" style="display: none;"></div>
+        <div class="form-group">
+            <label for="apiKey">API Key</label>
+            <input type="password" id="apiKey" placeholder="Enter your Parallel API key">
+        </div>
+
+        <div class="form-group">
+            <label for="taskInput">Task Input</label>
+            <textarea id="taskInput" placeholder="What would you like to research?"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="processor">Processor</label>
+            <select id="processor">
+                <option value="lite">Lite</option>
+                <option value="base" selected>Base</option>
+                <option value="core">Core</option>
+                <option value="pro">Pro</option>
+                <option value="ultra">Ultra</option>
+            </select>
+        </div>
+
+        <button id="createTaskBtn" onclick="createTask()">Create Task</button>
+
+        <div id="error" class="error" style="display: none;"></div>
     </div>
 
-    <div class="container">
+    <div class="right-panel">
         <h2>Tasks</h2>
-        <div id="loading" class="loading">Loading tasks...</div>
-        <div id="tasksError" class="error" style="display: none;"></div>
-        <table id="tasksTable" style="display: none;">
+        <table class="tasks-table" id="tasksTable">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Status</th>
                     <th>Input</th>
                     <th>Processor</th>
-                    <th>Status</th>
                     <th>Created</th>
-                    <th>Updated</th>
                 </tr>
             </thead>
             <tbody id="tasksBody">
+                <tr>
+                    <td colspan="4" class="loading">Loading tasks...</td>
+                </tr>
             </tbody>
         </table>
+
+        <div id="taskDetail" style="display: none;">
+            <h3>Task Details</h3>
+            <div class="task-detail">
+                <div id="taskDetailContent"></div>
+            </div>
+        </div>
     </div>
 
     <script>
-        const API_BASE = '';
+        // Load saved data from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedApiKey = localStorage.getItem('parallelApiKey');
+            const savedTaskInput = localStorage.getItem('taskInput');
+            const savedProcessor = localStorage.getItem('processor');
 
-        let tasks = [];
-        let refreshInterval;
+            if (savedApiKey) document.getElementById('apiKey').value = savedApiKey;
+            if (savedTaskInput) document.getElementById('taskInput').value = savedTaskInput;
+            if (savedProcessor) document.getElementById('processor').value = savedProcessor;
 
-        // Form submission
-        document.getElementById('taskForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
+            loadTasks();
 
+            // Auto-save inputs
+            document.getElementById('apiKey').addEventListener('input', (e) => {
+                localStorage.setItem('parallelApiKey', e.target.value);
+            });
+
+            document.getElementById('taskInput').addEventListener('input', (e) => {
+                localStorage.setItem('taskInput', e.target.value);
+            });
+
+            document.getElementById('processor').addEventListener('change', (e) => {
+                localStorage.setItem('processor', e.target.value);
+            });
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        async function createTask() {
+            const apiKey = document.getElementById('apiKey').value.trim();
             const input = document.getElementById('taskInput').value.trim();
             const processor = document.getElementById('processor').value;
-            const submitBtn = document.getElementById('submitBtn');
-            const createError = document.getElementById('createError');
 
-            if (!input) {
-                showError(createError, 'Please enter a task input');
+            if (!apiKey) {
+                showError('Please enter your API key');
                 return;
             }
 
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Creating...';
-            hideError(createError);
+            if (!input) {
+                showError('Please enter task input');
+                return;
+            }
+
+            const createBtn = document.getElementById('createTaskBtn');
+            createBtn.disabled = true;
+            createBtn.textContent = 'Creating...';
 
             try {
-                const response = await fetch(`${API_BASE}/api/tasks`, {
+                const response = await fetch('/api/tasks', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ input, processor })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input, processor, apiKey })
                 });
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || `HTTP ${response.status}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to create task');
                 }
 
-                const result = await response.json();
-                console.log('Task created:', result);
-
-                // Clear form
+                // Clear input and reload tasks
                 document.getElementById('taskInput').value = '';
-
-                // Refresh tasks
-                await loadTasks();
+                localStorage.removeItem('taskInput');
+                loadTasks();
 
             } catch (error) {
-                console.error('Error creating task:', error);
-                showError(createError, `Failed to create task: ${error.message}`);
+                showError(error.message);
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Create Task';
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Task';
             }
-        });
+        }
 
-        // Load tasks
         async function loadTasks() {
-            const loading = document.getElementById('loading');
-            const tasksError = document.getElementById('tasksError');
-            const tasksTable = document.getElementById('tasksTable');
+            try {
+                const response = await fetch('/api/tasks');
+                if (!response.ok) throw new Error('Failed to load tasks');
+
+                const tasks = await response.json();
+                const tbody = document.getElementById('tasksBody');
+
+                if (tasks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="loading">No tasks yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = tasks.map(task => `
+                    <tr onclick="loadTaskDetail('${task.id}')">
+                        <td><span class="status ${task.status}">${task.status}</span></td>
+                        <td>${task.input.substring(0, 50)}${task.input.length > 50 ? '...' : ''}</td>
+                        <td>${task.processor}</td>
+                        <td>${new Date(task.created_at).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+
+            } catch (error) {
+                document.getElementById('tasksBody').innerHTML =
+                    '<tr><td colspan="4" class="error">Failed to load tasks</td></tr>';
+            }
+        }
+
+        async function loadTaskDetail(taskId) {
+            const taskDetail = document.getElementById('taskDetail');
+            const taskDetailContent = document.getElementById('taskDetailContent');
+
+            taskDetail.style.display = 'block';
+            taskDetailContent.innerHTML = '<div class="loading">Loading task details...</div>';
 
             try {
-                loading.style.display = 'block';
-                tasksTable.style.display = 'none';
-                hideError(tasksError);
+                const response = await fetch(`/api/task/${taskId}`);
+                if (!response.ok) throw new Error('Failed to load task details');
 
-                const response = await fetch(`${API_BASE}/api/tasks`);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                const data = await response.json();
 
-                tasks = await response.json();
-                renderTasks();
-
-                loading.style.display = 'none';
-                tasksTable.style.display = 'table';
-
-            } catch (error) {
-                console.error('Error loading tasks:', error);
-                loading.style.display = 'none';
-                showError(tasksError, `Failed to load tasks: ${error.message}`);
-            }
-        }
-
-        // Render tasks table
-        function renderTasks() {
-            const tbody = document.getElementById('tasksBody');
-            tbody.innerHTML = '';
-
-            tasks.forEach(task => {
-                const row = document.createElement('tr');
-                row.onclick = () => window.open(`/task/${task.id}`, '_blank');
-
-                row.innerHTML = `
-                    <td>${task.id.slice(0, 8)}...</td>
-                    <td class="input-preview">${escapeHtml(task.input)}</td>
-                    <td>${task.processor}</td>
-                    <td><span class="status ${task.status}">${task.status}</span></td>
-                    <td>${formatDate(task.created_at)}</td>
-                    <td>${formatDate(task.updated_at)}</td>
+                taskDetailContent.innerHTML = `
+                    <h4>Task: ${data.task.id}</h4>
+                    <p><strong>Status:</strong> <span class="status ${data.task.status}">${data.task.status}</span></p>
+                    <p><strong>Input:</strong> ${data.task.input}</p>
+                    <p><strong>Processor:</strong> ${data.task.processor}</p>
+                    <p><strong>Run ID:</strong> ${data.task.run_id || 'N/A'}</p>
+                    <p><strong>Created:</strong> ${new Date(data.task.created_at).toLocaleString()}</p>
+                    
+                    <h4>Events & Results</h4>
+                    <div class="json-display">${JSON.stringify(data.events, null, 2)}</div>
                 `;
 
-                tbody.appendChild(row);
-            });
-        }
-
-        // Utility functions
-        function showError(element, message) {
-            element.textContent = message;
-            element.style.display = 'block';
-        }
-
-        function hideError(element) {
-            element.style.display = 'none';
-        }
-
-        function escapeHtml(unsafe) {
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
-
-        function formatDate(dateString) {
-            return new Date(dateString).toLocaleString();
-        }
-
-        // Auto-refresh tasks every 5 seconds
-        function startAutoRefresh() {
-            refreshInterval = setInterval(loadTasks, 5000);
-        }
-
-        function stopAutoRefresh() {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
+            } catch (error) {
+                taskDetailContent.innerHTML = `<div class="error">Failed to load task details: ${error.message}</div>`;
             }
         }
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            loadTasks();
-            startAutoRefresh();
-        });
-
-        // Stop auto-refresh when page is hidden
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                stopAutoRefresh();
-            } else {
-                loadTasks();
-                startAutoRefresh();
-            }
-        });
+        // Auto-refresh tasks every 10 seconds
+        setInterval(loadTasks, 10000);
     </script>
 </body>
 
