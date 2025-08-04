@@ -13,5 +13,6 @@
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["TaskManager", "TaskRunner"] }
-  ]
+  ],
+  "route": { "custom_domain": true, "pattern": "tasks.gptideas.com" }
 }
