@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallel API Task Runner</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        select {
+            padding: 8px;
+            margin: 0 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+
+        .status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status.queued {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.running {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .input-preview {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .error {
+            color: #721c24;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🚀 Parallel API Task Runner</h1>
+
+    <div class="container">
+        <h2>Create New Task</h2>
+        <form id="taskForm">
+            <div>
+                <label for="taskInput">Task Input:</label>
+                <textarea id="taskInput" placeholder="Enter your research question or task description..."></textarea>
+            </div>
+            <div>
+                <label for="processor">Processor:</label>
+                <select id="processor">
+                    <option value="lite">Lite</option>
+                    <option value="base">Base</option>
+                    <option value="core">Core</option>
+                    <option value="pro">Pro</option>
+                    <option value="ultra">Ultra</option>
+                </select>
+                <button type="submit" id="submitBtn">Create Task</button>
+            </div>
+        </form>
+        <div id="createError" class="error" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Tasks</h2>
+        <div id="loading" class="loading">Loading tasks...</div>
+        <div id="tasksError" class="error" style="display: none;"></div>
+        <table id="tasksTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Input</th>
+                    <th>Processor</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Updated</th>
+                </tr>
+            </thead>
+            <tbody id="tasksBody">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_BASE = '';
+
+        let tasks = [];
+        let refreshInterval;
+
+        // Form submission
+        document.getElementById('taskForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const input = document.getElementById('taskInput').value.trim();
+            const processor = document.getElementById('processor').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const createError = document.getElementById('createError');
+
+            if (!input) {
+                showError(createError, 'Please enter a task input');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating...';
+            hideError(createError);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ input, processor })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Task created:', result);
+
+                // Clear form
+                document.getElementById('taskInput').value = '';
+
+                // Refresh tasks
+                await loadTasks();
+
+            } catch (error) {
+                console.error('Error creating task:', error);
+                showError(createError, `Failed to create task: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Task';
+            }
+        });
+
+        // Load tasks
+        async function loadTasks() {
+            const loading = document.getElementById('loading');
+            const tasksError = document.getElementById('tasksError');
+            const tasksTable = document.getElementById('tasksTable');
+
+            try {
+                loading.style.display = 'block';
+                tasksTable.style.display = 'none';
+                hideError(tasksError);
+
+                const response = await fetch(`${API_BASE}/api/tasks`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                tasks = await response.json();
+                renderTasks();
+
+                loading.style.display = 'none';
+                tasksTable.style.display = 'table';
+
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                loading.style.display = 'none';
+                showError(tasksError, `Failed to load tasks: ${error.message}`);
+            }
+        }
+
+        // Render tasks table
+        function renderTasks() {
+            const tbody = document.getElementById('tasksBody');
+            tbody.innerHTML = '';
+
+            tasks.forEach(task => {
+                const row = document.createElement('tr');
+                row.onclick = () => window.open(`/task/${task.id}`, '_blank');
+
+                row.innerHTML = `
+                    <td>${task.id.slice(0, 8)}...</td>
+                    <td class="input-preview">${escapeHtml(task.input)}</td>
+                    <td>${task.processor}</td>
+                    <td><span class="status ${task.status}">${task.status}</span></td>
+                    <td>${formatDate(task.created_at)}</td>
+                    <td>${formatDate(task.updated_at)}</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+        }
+
+        // Utility functions
+        function showError(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        function hideError(element) {
+            element.style.display = 'none';
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleString();
+        }
+
+        // Auto-refresh tasks every 5 seconds
+        function startAutoRefresh() {
+            refreshInterval = setInterval(loadTasks, 5000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTasks();
+            startAutoRefresh();
+        });
+
+        // Stop auto-refresh when page is hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                loadTasks();
+                startAutoRefresh();
+            }
+        });
+    </script>
+</body>
+
+</html>

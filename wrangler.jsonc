@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "parallel-task-runner",
+  "main": "worker.js",
+  "compatibility_date": "2025-07-14",
+  "assets": { "directory": "./public" },
+  "observability": { "logs": { "enabled": true } },
+  "durable_objects": {
+    "bindings": [{ "name": "TASKSTORE", "class_name": "TaskStoreDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStoreDO"] }]
+}
