@@ -6,31 +6,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parallel API Task Manager</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            display: flex;
-            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
         }
 
-        .left-panel {
-            flex: 1;
-            padding: 20px;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
             background: white;
-            border-right: 1px solid #e0e0e0;
-            overflow-y: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
         }
 
-        .right-panel {
-            flex: 1;
+        .header {
+            background: #2563eb;
+            color: white;
             padding: 20px;
-            overflow-y: auto;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .form-section {
+            padding: 20px;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .form-group {
@@ -41,339 +46,333 @@
             display: block;
             margin-bottom: 5px;
             font-weight: 500;
-            color: #333;
+            color: #374151;
         }
 
         input,
-        textarea,
-        select {
+        select,
+        textarea {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-
-        input[type="password"] {
-            font-family: monospace;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
         }
 
         textarea {
-            min-height: 100px;
+            height: 100px;
             resize: vertical;
         }
 
+        .task-spec-textarea {
+            height: 150px;
+            font-family: 'Courier New', monospace;
+        }
+
         button {
-            background: #007bff;
+            background: #2563eb;
             color: white;
-            border: none;
             padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
+            border: none;
+            border-radius: 4px;
             font-size: 14px;
+            cursor: pointer;
             font-weight: 500;
         }
 
         button:hover {
-            background: #0056b3;
+            background: #1d4ed8;
         }
 
         button:disabled {
-            background: #ccc;
+            background: #9ca3af;
             cursor: not-allowed;
         }
 
-        .tasks-table {
+        .tasks-section {
+            padding: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #111827;
+        }
+
+        table {
             width: 100%;
             border-collapse: collapse;
-            background: white;
-            border-radius: 6px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
         }
 
-        .tasks-table th,
-        .tasks-table td {
-            padding: 12px;
+        th,
+        td {
             text-align: left;
-            border-bottom: 1px solid #e0e0e0;
+            padding: 12px 8px;
+            border-bottom: 1px solid #e5e7eb;
         }
 
-        .tasks-table th {
-            background: #f8f9fa;
+        th {
+            background-color: #f9fafb;
             font-weight: 600;
-            color: #495057;
+            color: #374151;
         }
 
-        .tasks-table tr:hover {
-            background: #f8f9fa;
+        tr:hover {
+            background-color: #f9fafb;
             cursor: pointer;
         }
 
         .status {
             padding: 4px 8px;
-            border-radius: 12px;
+            border-radius: 4px;
             font-size: 12px;
             font-weight: 500;
-            text-transform: uppercase;
         }
 
-        .status.queued {
-            background: #fff3cd;
-            color: #856404;
+        .status.pending {
+            background: #fef3c7;
+            color: #92400e;
         }
 
         .status.running {
-            background: #d1ecf1;
-            color: #0c5460;
+            background: #dbeafe;
+            color: #1e40af;
         }
 
         .status.completed {
-            background: #d4edda;
-            color: #155724;
+            background: #d1fae5;
+            color: #065f46;
         }
 
         .status.failed {
-            background: #f8d7da;
-            color: #721c24;
+            background: #fee2e2;
+            color: #991b1b;
         }
 
-        .task-detail {
-            background: white;
-            border-radius: 6px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        .input-preview {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .json-display {
-            background: #f8f9fa;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 15px;
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 12px;
-            white-space: pre-wrap;
-            max-height: 400px;
-            overflow-y: auto;
-            margin-top: 10px;
+        .refresh-btn {
+            background: #059669;
+            margin-left: 10px;
         }
 
-        h1,
-        h2,
-        h3 {
-            color: #333;
-            margin-bottom: 15px;
+        .refresh-btn:hover {
+            background: #047857;
         }
 
-        .loading {
-            text-align: center;
-            color: #666;
-            font-style: italic;
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .error {
-            color: #dc3545;
-            background: #f8d7da;
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
         }
     </style>
 </head>
 
 <body>
-    <div class="left-panel">
-        <h1>Parallel API Task Manager</h1>
-
-        <div class="form-group">
-            <label for="apiKey">API Key</label>
-            <input type="password" id="apiKey" placeholder="Enter your Parallel API key">
+    <div class="container">
+        <div class="header">
+            <h1>Parallel API Task Manager</h1>
         </div>
 
-        <div class="form-group">
-            <label for="taskInput">Task Input</label>
-            <textarea id="taskInput" placeholder="What would you like to research?"></textarea>
+        <div class="form-section">
+            <form id="taskForm">
+                <div class="form-group">
+                    <label for="apiKey">Parallel API Key:</label>
+                    <input type="password" id="apiKey" name="apiKey" required placeholder="Enter your Parallel API key">
+                </div>
+
+                <div class="form-group">
+                    <label for="processor">Processor:</label>
+                    <select id="processor" name="processor" required>
+                        <option value="lite">Lite</option>
+                        <option value="base">Base</option>
+                        <option value="pro">Pro</option>
+                        <option value="core">Core</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="input">Task Input:</label>
+                    <textarea id="input" name="input" required placeholder="Enter your task input here..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="useTaskSpec" name="useTaskSpec">
+                        <label for="useTaskSpec">Use Task Specification</label>
+                    </div>
+                </div>
+
+                <div class="form-group" id="taskSpecGroup" style="display: none;">
+                    <label for="taskSpec">Task Specification (JSON):</label>
+                    <textarea id="taskSpec" name="taskSpec" class="task-spec-textarea"
+                        placeholder='{"output_schema": {"type": "json", "json_schema": {...}}}'></textarea>
+                </div>
+
+                <button type="submit" id="submitBtn">Create Task</button>
+            </form>
         </div>
 
-        <div class="form-group">
-            <label for="processor">Processor</label>
-            <select id="processor">
-                <option value="lite">Lite</option>
-                <option value="base" selected>Base</option>
-                <option value="core">Core</option>
-                <option value="pro">Pro</option>
-                <option value="ultra">Ultra</option>
-            </select>
-        </div>
-
-        <button id="createTaskBtn" onclick="createTask()">Create Task</button>
-
-        <div id="error" class="error" style="display: none;"></div>
-    </div>
-
-    <div class="right-panel">
-        <h2>Tasks</h2>
-        <table class="tasks-table" id="tasksTable">
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Input</th>
-                    <th>Processor</th>
-                    <th>Created</th>
-                </tr>
-            </thead>
-            <tbody id="tasksBody">
-                <tr>
-                    <td colspan="4" class="loading">Loading tasks...</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div id="taskDetail" style="display: none;">
-            <h3>Task Details</h3>
-            <div class="task-detail">
-                <div id="taskDetailContent"></div>
+        <div class="tasks-section">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <h2 class="section-title">Tasks</h2>
+                <button type="button" class="refresh-btn" onclick="loadTasks()">Refresh</button>
             </div>
+            <table id="tasksTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Processor</th>
+                        <th>Status</th>
+                        <th>Input Preview</th>
+                        <th>Created</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody id="tasksBody">
+                    <!-- Tasks will be loaded here -->
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        // Load saved data from localStorage
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedApiKey = localStorage.getItem('parallelApiKey');
-            const savedTaskInput = localStorage.getItem('taskInput');
-            const savedProcessor = localStorage.getItem('processor');
-
-            if (savedApiKey) document.getElementById('apiKey').value = savedApiKey;
-            if (savedTaskInput) document.getElementById('taskInput').value = savedTaskInput;
-            if (savedProcessor) document.getElementById('processor').value = savedProcessor;
-
-            loadTasks();
-
-            // Auto-save inputs
-            document.getElementById('apiKey').addEventListener('input', (e) => {
-                localStorage.setItem('parallelApiKey', e.target.value);
-            });
-
-            document.getElementById('taskInput').addEventListener('input', (e) => {
-                localStorage.setItem('taskInput', e.target.value);
-            });
-
-            document.getElementById('processor').addEventListener('change', (e) => {
-                localStorage.setItem('processor', e.target.value);
-            });
-        });
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 5000);
+        // Load form data from localStorage
+        function loadFormData() {
+            const formData = localStorage.getItem('taskFormData');
+            if (formData) {
+                const data = JSON.parse(formData);
+                document.getElementById('apiKey').value = data.apiKey || '';
+                document.getElementById('processor').value = data.processor || 'base';
+                document.getElementById('input').value = data.input || '';
+                document.getElementById('useTaskSpec').checked = data.useTaskSpec || false;
+                document.getElementById('taskSpec').value = data.taskSpec || '';
+                toggleTaskSpec();
+            }
         }
 
-        async function createTask() {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            const input = document.getElementById('taskInput').value.trim();
-            const processor = document.getElementById('processor').value;
+        // Save form data to localStorage
+        function saveFormData() {
+            const data = {
+                apiKey: document.getElementById('apiKey').value,
+                processor: document.getElementById('processor').value,
+                input: document.getElementById('input').value,
+                useTaskSpec: document.getElementById('useTaskSpec').checked,
+                taskSpec: document.getElementById('taskSpec').value
+            };
+            localStorage.setItem('taskFormData', JSON.stringify(data));
+        }
 
-            if (!apiKey) {
-                showError('Please enter your API key');
-                return;
+        // Toggle task spec visibility
+        function toggleTaskSpec() {
+            const useTaskSpec = document.getElementById('useTaskSpec').checked;
+            const taskSpecGroup = document.getElementById('taskSpecGroup');
+            taskSpecGroup.style.display = useTaskSpec ? 'block' : 'none';
+        }
+
+        document.getElementById('useTaskSpec').addEventListener('change', toggleTaskSpec);
+
+        // Save form data whenever inputs change
+        document.querySelectorAll('#taskForm input, #taskForm select, #taskForm textarea').forEach(input => {
+            input.addEventListener('input', saveFormData);
+            input.addEventListener('change', saveFormData);
+        });
+
+        // Handle form submission
+        document.getElementById('taskForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating Task...';
+
+            const formData = new FormData(e.target);
+            const taskData = {
+                apiKey: formData.get('apiKey'),
+                processor: formData.get('processor'),
+                input: formData.get('input')
+            };
+
+            if (document.getElementById('useTaskSpec').checked && formData.get('taskSpec').trim()) {
+                try {
+                    taskData.taskSpec = JSON.parse(formData.get('taskSpec'));
+                } catch (error) {
+                    alert('Invalid JSON in Task Specification');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Task';
+                    return;
+                }
             }
-
-            if (!input) {
-                showError('Please enter task input');
-                return;
-            }
-
-            const createBtn = document.getElementById('createTaskBtn');
-            createBtn.disabled = true;
-            createBtn.textContent = 'Creating...';
 
             try {
                 const response = await fetch('/api/tasks', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ input, processor, apiKey })
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(taskData)
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to create task');
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`Task created successfully! ID: ${result.taskId}`);
+                    loadTasks(); // Refresh the tasks list
+                } else {
+                    const error = await response.text();
+                    alert(`Error creating task: ${error}`);
                 }
-
-                // Clear input and reload tasks
-                document.getElementById('taskInput').value = '';
-                localStorage.removeItem('taskInput');
-                loadTasks();
-
             } catch (error) {
-                showError(error.message);
+                alert(`Error: ${error.message}`);
             } finally {
-                createBtn.disabled = false;
-                createBtn.textContent = 'Create Task';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Task';
             }
-        }
+        });
 
+        // Load tasks
         async function loadTasks() {
             try {
                 const response = await fetch('/api/tasks');
-                if (!response.ok) throw new Error('Failed to load tasks');
-
                 const tasks = await response.json();
+
                 const tbody = document.getElementById('tasksBody');
+                tbody.innerHTML = '';
 
-                if (tasks.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="loading">No tasks yet</td></tr>';
-                    return;
-                }
+                tasks.forEach(task => {
+                    const row = document.createElement('tr');
+                    row.onclick = () => window.open(`/task/${task.id}`, '_blank');
 
-                tbody.innerHTML = tasks.map(task => `
-                    <tr onclick="loadTaskDetail('${task.id}')">
-                        <td><span class="status ${task.status}">${task.status}</span></td>
-                        <td>${task.input.substring(0, 50)}${task.input.length > 50 ? '...' : ''}</td>
+                    row.innerHTML = `
+                        <td>${task.id.substring(0, 8)}...</td>
                         <td>${task.processor}</td>
-                        <td>${new Date(task.created_at).toLocaleString()}</td>
-                    </tr>
-                `).join('');
+                        <td><span class="status ${task.status}">${task.status}</span></td>
+                        <td class="input-preview">${task.inputPreview}</td>
+                        <td>${new Date(task.createdAt).toLocaleString()}</td>
+                        <td>${task.completedAt ? new Date(task.completedAt).toLocaleString() : '-'}</td>
+                    `;
 
+                    tbody.appendChild(row);
+                });
             } catch (error) {
-                document.getElementById('tasksBody').innerHTML =
-                    '<tr><td colspan="4" class="error">Failed to load tasks</td></tr>';
+                console.error('Error loading tasks:', error);
             }
         }
 
-        async function loadTaskDetail(taskId) {
-            const taskDetail = document.getElementById('taskDetail');
-            const taskDetailContent = document.getElementById('taskDetailContent');
-
-            taskDetail.style.display = 'block';
-            taskDetailContent.innerHTML = '<div class="loading">Loading task details...</div>';
-
-            try {
-                const response = await fetch(`/api/task/${taskId}`);
-                if (!response.ok) throw new Error('Failed to load task details');
-
-                const data = await response.json();
-
-                taskDetailContent.innerHTML = `
-                    <h4>Task: ${data.task.id}</h4>
-                    <p><strong>Status:</strong> <span class="status ${data.task.status}">${data.task.status}</span></p>
-                    <p><strong>Input:</strong> ${data.task.input}</p>
-                    <p><strong>Processor:</strong> ${data.task.processor}</p>
-                    <p><strong>Run ID:</strong> ${data.task.run_id || 'N/A'}</p>
-                    <p><strong>Created:</strong> ${new Date(data.task.created_at).toLocaleString()}</p>
-                    
-                    <h4>Events & Results</h4>
-                    <div class="json-display">${JSON.stringify(data.events, null, 2)}</div>
-                `;
-
-            } catch (error) {
-                taskDetailContent.innerHTML = `<div class="error">Failed to load task details: ${error.message}</div>`;
-            }
-        }
+        // Initialize the page
+        loadFormData();
+        loadTasks();
 
         // Auto-refresh tasks every 10 seconds
         setInterval(loadTasks, 10000);

@@ -1,1 +1,2 @@
-Prompt: https://letmeprompt.com/rules-httpsuithu-a19ew60
+- Initial Prompt (after iterating): https://letmeprompt.com/rules-httpsuithu-cu98e70
+- Fix bug: https://letmeprompt.com/rules-httpsuithu-jc4bvf0

@@ -1,16 +1,17 @@
 {
   "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
-  "name": "parallel-task-manager",
+  "name": "parallel-task-runner",
   "main": "worker.js",
   "compatibility_date": "2025-07-14",
   "assets": { "directory": "./public" },
   "observability": { "logs": { "enabled": true } },
-  "route": { "custom_domain": true, "pattern": "parallel-tasks.wilmake.com" },
   "durable_objects": {
     "bindings": [
-      { "name": "MAIN_DO", "class_name": "MainDO" },
-      { "name": "TASK_DO", "class_name": "TaskDO" }
+      { "name": "TASK_MANAGER", "class_name": "TaskManager" },
+      { "name": "TASK_RUNNER", "class_name": "TaskRunner" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MainDO", "TaskDO"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TaskManager", "TaskRunner"] }
+  ]
 }

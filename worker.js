@@ -5,33 +5,37 @@ import { DurableObject } from "cloudflare:workers";
 
 /**
  * @typedef Env
- * @property {DurableObjectNamespace<MainDO>} MAIN_DO
- * @property {DurableObjectNamespace<TaskDO>} TASK_DO
+ * @property {DurableObjectNamespace<TaskManager>} TASK_MANAGER
+ * @property {DurableObjectNamespace<TaskRunner>} TASK_RUNNER
  */
 
 export default {
   /** @param {Request} request @param {Env} env @param {ExecutionContext} ctx @returns {Promise<Response>} */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const path = url.pathname;
 
-    // API routes
-    const mainDO = env.MAIN_DO.get(env.MAIN_DO.idFromName("main"));
+    // Get the main task manager DO
+    const taskManagerId = env.TASK_MANAGER.idFromName("main");
+    const taskManager = env.TASK_MANAGER.get(taskManagerId);
 
-    if (path === "/api/tasks" && request.method === "POST") {
-      return mainDO.createTask(request, env);
-    } else if (path === "/api/tasks" && request.method === "GET") {
-      return mainDO.getTasks();
-    } else if (path.startsWith("/api/task/") && request.method === "GET") {
-      const taskId = path.split("/")[3];
-      return mainDO.getTask(taskId);
+    if (url.pathname === "/api/tasks" && request.method === "POST") {
+      return taskManager.createTask(await request.json());
+    }
+
+    if (url.pathname === "/api/tasks" && request.method === "GET") {
+      return taskManager.getTasks();
+    }
+
+    if (url.pathname.startsWith("/task/")) {
+      const taskId = url.pathname.split("/")[2];
+      return taskManager.getTaskDetails(taskId);
     }
 
     return new Response("Not found", { status: 404 });
   },
 };
 
-export class MainDO extends DurableObject {
+export class TaskManager extends DurableObject {
   /** @param {DurableObjectState} state @param {Env} env */
   constructor(state, env) {
     super(state, env);
@@ -42,12 +46,15 @@ export class MainDO extends DurableObject {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
-        input TEXT NOT NULL,
+        api_key TEXT NOT NULL,
         processor TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'queued',
+        input TEXT NOT NULL,
+        task_spec TEXT,
         run_id TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        status TEXT DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        result TEXT
       )
     `);
 
@@ -57,266 +64,365 @@ export class MainDO extends DurableObject {
         task_id TEXT NOT NULL,
         event_type TEXT NOT NULL,
         event_data TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
         FOREIGN KEY (task_id) REFERENCES tasks (id)
       )
     `);
   }
 
-  /** @param {Request} request @param {Env} env */
-  async createTask(request, env) {
-    const { input, processor, apiKey } = await request.json();
-
-    if (!input || !processor || !apiKey) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
+  /** @param {any} taskData  */
+  async createTask(taskData) {
     const taskId = crypto.randomUUID();
-    const now = new Date().toISOString();
+    const now = Date.now();
 
     // Store task in database
     this.sql.exec(
-      "INSERT INTO tasks (id, input, processor, status, created_at, updated_at) VALUES (?, ?, ?, 'queued', ?, ?)",
+      `INSERT INTO tasks (id, api_key, processor, input, task_spec, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
       taskId,
-      input,
-      processor,
-      now,
+      taskData.apiKey,
+      taskData.processor,
+      taskData.input,
+      taskData.taskSpec ? JSON.stringify(taskData.taskSpec) : null,
       now
     );
 
-    // Create TaskDO and start processing
-    const taskDO = env.TASK_DO.get(env.TASK_DO.idFromName(taskId));
-    taskDO.startTask(taskId, input, processor, apiKey);
+    // Create a task runner DO for this specific task
+    const taskRunnerId = this.env.TASK_RUNNER.idFromName(taskId);
+    const taskRunner = this.env.TASK_RUNNER.get(taskRunnerId);
 
-    return new Response(JSON.stringify({ taskId }), {
+    // Start the task runner (fire and forget)
+    taskRunner.runTask(taskId, taskData);
+
+    return new Response(JSON.stringify({ taskId, status: "started" }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
   async getTasks() {
-    const tasks = this.sql
-      .exec("SELECT * FROM tasks ORDER BY created_at DESC")
-      .toArray();
+    const result = this.sql.exec(`
+      SELECT id, processor, status, created_at, completed_at, 
+             substr(input, 1, 100) as input_preview
+      FROM tasks 
+      ORDER BY created_at DESC
+    `);
+
+    const tasks = result.toArray().map((row) => ({
+      id: row.id,
+      processor: row.processor,
+      status: row.status,
+      createdAt: new Date(row.created_at).toISOString(),
+      completedAt: row.completed_at
+        ? new Date(row.completed_at).toISOString()
+        : null,
+      inputPreview: row.input_preview,
+    }));
+
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
   /** @param {string} taskId */
-  async getTask(taskId) {
-    const task = this.sql
-      .exec("SELECT * FROM tasks WHERE id = ?", taskId)
-      .toArray()[0];
-    if (!task) {
-      return new Response(JSON.stringify({ error: "Task not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+  async getTaskDetails(taskId) {
+    // Get task info
+    const taskResult = this.sql.exec(
+      `SELECT * FROM tasks WHERE id = ?`,
+      taskId
+    );
+    const taskRows = taskResult.toArray();
+
+    if (taskRows.length === 0) {
+      return new Response("Task not found", { status: 404 });
     }
 
-    const events = this.sql
-      .exec(
-        "SELECT * FROM task_events WHERE task_id = ? ORDER BY timestamp ASC",
-        taskId
-      )
-      .toArray();
+    const task = taskRows[0];
 
-    return new Response(JSON.stringify({ task, events }), {
+    // Get all events for this task
+    const eventsResult = this.sql.exec(
+      `
+      SELECT event_type, event_data, timestamp 
+      FROM task_events 
+      WHERE task_id = ? 
+      ORDER BY timestamp ASC
+    `,
+      taskId
+    );
+
+    const events = eventsResult.toArray().map((row) => ({
+      type: row.event_type,
+      data: JSON.parse(row.event_data),
+      timestamp: new Date(row.timestamp).toISOString(),
+    }));
+
+    const response = {
+      task: {
+        id: task.id,
+        processor: task.processor,
+        input: task.input,
+        taskSpec: task.task_spec ? JSON.parse(task.task_spec) : null,
+        runId: task.run_id,
+        status: task.status,
+        createdAt: new Date(task.created_at).toISOString(),
+        completedAt: task.completed_at
+          ? new Date(task.completed_at).toISOString()
+          : null,
+        result: task.result ? JSON.parse(task.result) : null,
+      },
+      events,
+    };
+
+    return new Response(JSON.stringify(response, null, 2), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  /** @param {string} taskId @param {string} status @param {string} runId */
-  async updateTaskStatus(taskId, status, runId = null) {
-    const now = new Date().toISOString();
-    if (runId) {
-      this.sql.exec(
-        "UPDATE tasks SET status = ?, run_id = ?, updated_at = ? WHERE id = ?",
-        status,
-        runId,
-        now,
-        taskId
-      );
-    } else {
-      this.sql.exec(
-        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
-        status,
-        now,
-        taskId
-      );
-    }
-  }
-
   /** @param {string} taskId @param {string} eventType @param {any} eventData */
-  async addTaskEvent(taskId, eventType, eventData) {
-    const now = new Date().toISOString();
+  async addEvent(taskId, eventType, eventData) {
     this.sql.exec(
-      "INSERT INTO task_events (task_id, event_type, event_data, timestamp) VALUES (?, ?, ?, ?)",
+      `INSERT INTO task_events (task_id, event_type, event_data, timestamp) 
+       VALUES (?, ?, ?, ?)`,
       taskId,
       eventType,
       JSON.stringify(eventData),
-      now
+      Date.now()
+    );
+  }
+
+  /** @param {string} taskId @param {string} runId */
+  async updateTaskRunId(taskId, runId) {
+    this.sql.exec(`UPDATE tasks SET run_id = ? WHERE id = ?`, runId, taskId);
+  }
+
+  /** @param {string} taskId @param {string} status @param {any} result */
+  async updateTaskStatus(taskId, status, result = null) {
+    const completedAt =
+      status === "completed" || status === "failed" ? Date.now() : null;
+    this.sql.exec(
+      `UPDATE tasks SET status = ?, completed_at = ?, result = ? WHERE id = ?`,
+      status,
+      completedAt,
+      result ? JSON.stringify(result) : null,
+      taskId
     );
   }
 }
 
-export class TaskDO extends DurableObject {
+export class TaskRunner extends DurableObject {
   /** @param {DurableObjectState} state @param {Env} env */
   constructor(state, env) {
     super(state, env);
     this.env = env;
   }
 
-  /** @param {string} taskId @param {string} input @param {string} processor @param {string} apiKey */
-  async startTask(taskId, input, processor, apiKey) {
-    const mainDO = this.env.MAIN_DO.get(this.env.MAIN_DO.idFromName("main"));
-
+  /** @param {string} taskId @param {any} taskData */
+  async runTask(taskId, taskData) {
     try {
-      // Create task run via Parallel API
+      // Get the main task manager to report back to
+      const taskManagerId = this.env.TASK_MANAGER.idFromName("main");
+      const taskManager = this.env.TASK_MANAGER.get(taskManagerId);
+
+      // Create the task run
+      const createPayload = {
+        input: taskData.input,
+        processor: taskData.processor,
+        enable_events: true,
+      };
+
+      if (taskData.taskSpec) {
+        createPayload.task_spec = taskData.taskSpec;
+      }
+
       const createResponse = await fetch(
         "https://api.parallel.ai/v1/tasks/runs",
         {
           method: "POST",
           headers: {
-            "x-api-key": apiKey,
-            "content-type": "application/json",
+            "Content-Type": "application/json",
+            "x-api-key": taskData.apiKey,
             "parallel-beta": "events-sse-2025-07-24",
           },
-          body: JSON.stringify({
-            input,
-            processor,
-            enable_events: true,
-          }),
+          body: JSON.stringify(createPayload),
         }
       );
 
       if (!createResponse.ok) {
         const error = await createResponse.text();
-        await mainDO.updateTaskStatus(taskId, "failed");
-        await mainDO.addTaskEvent(taskId, "error", { message: error });
+        await taskManager.addEvent(taskId, "error", {
+          message: `Failed to create task: ${error}`,
+        });
+        await taskManager.updateTaskStatus(taskId, "failed");
         return;
       }
 
       const taskRun = await createResponse.json();
       const runId = taskRun.run_id;
 
-      await mainDO.updateTaskStatus(taskId, "running", runId);
-      await mainDO.addTaskEvent(taskId, "created", taskRun);
+      await taskManager.updateTaskRunId(taskId, runId);
+      await taskManager.addEvent(taskId, "task_created", taskRun);
+      await taskManager.updateTaskStatus(taskId, "running");
 
-      // Start SSE stream for events
-      this.streamEvents(taskId, runId, apiKey, mainDO);
-
-      // Poll for completion
-      this.pollForCompletion(taskId, runId, apiKey, mainDO);
-    } catch (error) {
-      await mainDO.updateTaskStatus(taskId, "failed");
-      await mainDO.addTaskEvent(taskId, "error", { message: error.message });
-    }
-  }
-
-  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} mainDO */
-  async streamEvents(taskId, runId, apiKey, mainDO) {
-    try {
-      const eventResponse = await fetch(
+      // Start listening to SSE events
+      const eventsResponse = await fetch(
         `https://api.parallel.ai/v1beta/tasks/runs/${runId}/events`,
         {
           headers: {
-            "x-api-key": apiKey,
-            "content-type": "text/event-stream",
+            "x-api-key": taskData.apiKey,
+            "Content-Type": "text/event-stream",
           },
         }
       );
 
-      if (!eventResponse.ok) return;
+      if (!eventsResponse.ok) {
+        await taskManager.addEvent(taskId, "error", {
+          message: "Failed to connect to SSE stream",
+        });
+        await taskManager.updateTaskStatus(taskId, "failed");
+        return;
+      }
 
-      const reader = eventResponse.body?.getReader();
-      if (!reader) return;
-
+      // Process SSE stream
+      const reader = eventsResponse.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      if (!reader) {
+        await taskManager.addEvent(taskId, "error", {
+          message: "No readable stream",
+        });
+        await taskManager.updateTaskStatus(taskId, "failed");
+        return;
+      }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const eventData = JSON.parse(line.slice(6));
-              await mainDO.addTaskEvent(
-                taskId,
-                eventData.type || "stream",
-                eventData
-              );
-            } catch (e) {
-              // Ignore malformed JSON
+          if (done) {
+            // Stream ended, check final status
+            await this.checkFinalStatus(
+              taskId,
+              runId,
+              taskData.apiKey,
+              taskManager
+            );
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = JSON.parse(line.slice(6));
+                await taskManager.addEvent(taskId, "sse_event", eventData);
+
+                // Check if it's a status event indicating completion
+                if (eventData.type === "status") {
+                  if (eventData.status === "completed") {
+                    // Get the final result
+                    await this.fetchAndStoreResult(
+                      taskId,
+                      runId,
+                      taskData.apiKey,
+                      taskManager
+                    );
+                    return; // Exit the function
+                  } else if (eventData.status === "failed") {
+                    await taskManager.updateTaskStatus(taskId, "failed");
+                    return; // Exit the function
+                  }
+                }
+              } catch (e) {
+                await taskManager.addEvent(taskId, "parse_error", {
+                  message: `Failed to parse SSE event: ${e.message}`,
+                  line: line,
+                });
+              }
             }
           }
         }
+      } finally {
+        reader.releaseLock();
       }
     } catch (error) {
-      await mainDO.addTaskEvent(taskId, "stream_error", {
-        message: error.message,
-      });
+      const taskManagerId = this.env.TASK_MANAGER.idFromName("main");
+      const taskManager = this.env.TASK_MANAGER.get(taskManagerId);
+      await taskManager.addEvent(taskId, "error", { message: error.message });
+      await taskManager.updateTaskStatus(taskId, "failed");
     }
   }
 
-  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} mainDO */
-  async pollForCompletion(taskId, runId, apiKey, mainDO) {
-    const maxAttempts = 60; // 10 minutes max
-    let attempts = 0;
-
-    while (attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 10000)); // Wait 10 seconds
-      attempts++;
-
-      try {
-        const statusResponse = await fetch(
-          `https://api.parallel.ai/v1/tasks/runs/${runId}`,
-          {
-            headers: { "x-api-key": apiKey },
-          }
-        );
-
-        if (!statusResponse.ok) continue;
-
-        const taskRun = await statusResponse.json();
-
-        if (taskRun.status === "completed") {
-          // Get results
-          const resultResponse = await fetch(
-            `https://api.parallel.ai/v1/tasks/runs/${runId}/result`,
-            {
-              headers: { "x-api-key": apiKey },
-            }
-          );
-
-          if (resultResponse.ok) {
-            const result = await resultResponse.json();
-            await mainDO.updateTaskStatus(taskId, "completed");
-            await mainDO.addTaskEvent(taskId, "completed", result);
-          }
-          break;
-        } else if (taskRun.status === "failed") {
-          await mainDO.updateTaskStatus(taskId, "failed");
-          await mainDO.addTaskEvent(taskId, "failed", taskRun);
-          break;
+  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} taskManager */
+  async fetchAndStoreResult(taskId, runId, apiKey, taskManager) {
+    try {
+      const resultResponse = await fetch(
+        `https://api.parallel.ai/v1/tasks/runs/${runId}/result`,
+        {
+          headers: {
+            "x-api-key": apiKey,
+          },
         }
-      } catch (error) {
-        await mainDO.addTaskEvent(taskId, "poll_error", {
-          message: error.message,
+      );
+
+      if (resultResponse.ok) {
+        const result = await resultResponse.json();
+        await taskManager.addEvent(taskId, "result", result);
+        await taskManager.updateTaskStatus(taskId, "completed", result);
+      } else {
+        const errorText = await resultResponse.text();
+        await taskManager.addEvent(taskId, "result_error", {
+          message: `Failed to fetch result: ${errorText}`,
+          status: resultResponse.status,
         });
+        await taskManager.updateTaskStatus(taskId, "failed");
       }
+    } catch (error) {
+      await taskManager.addEvent(taskId, "result_error", {
+        message: `Error fetching result: ${error.message}`,
+      });
+      await taskManager.updateTaskStatus(taskId, "failed");
+    }
+  }
+
+  /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} taskManager */
+  async checkFinalStatus(taskId, runId, apiKey, taskManager) {
+    try {
+      // Stream ended without completion status, check current status
+      const statusResponse = await fetch(
+        `https://api.parallel.ai/v1/tasks/runs/${runId}`,
+        {
+          headers: {
+            "x-api-key": apiKey,
+          },
+        }
+      );
+
+      if (statusResponse.ok) {
+        const status = await statusResponse.json();
+        await taskManager.addEvent(taskId, "final_status_check", status);
+
+        if (status.status === "completed") {
+          await this.fetchAndStoreResult(taskId, runId, apiKey, taskManager);
+        } else if (status.status === "failed") {
+          await taskManager.updateTaskStatus(taskId, "failed");
+        } else {
+          // Still running or other status
+          await taskManager.updateTaskStatus(taskId, status.status);
+        }
+      } else {
+        await taskManager.addEvent(taskId, "status_check_error", {
+          message: "Failed to check final status",
+        });
+        await taskManager.updateTaskStatus(taskId, "unknown");
+      }
+    } catch (error) {
+      await taskManager.addEvent(taskId, "status_check_error", {
+        message: `Error checking final status: ${error.message}`,
+      });
+      await taskManager.updateTaskStatus(taskId, "unknown");
     }
   }
 }
