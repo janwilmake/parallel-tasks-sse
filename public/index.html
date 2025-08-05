@@ -4,252 +4,420 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parallel API Task Manager</title>
+    <title>parallel task manager</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        * {
             margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            line-height: 1.6;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .header {
-            background: #2563eb;
-            color: white;
-            padding: 20px;
+            padding: 24px;
+            border-bottom: 1px solid #333333;
         }
 
-        .header h1 {
-            margin: 0;
+        .brand {
             font-size: 24px;
+            font-weight: bold;
+            color: #ffffff;
         }
 
-        .form-section {
-            padding: 20px;
-            border-bottom: 1px solid #e5e7eb;
+        .main-content {
+            flex: 1;
+            padding: 32px 24px;
         }
 
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: #374151;
-        }
-
-        input,
-        select,
-        textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-
-        textarea {
-            height: 100px;
-            resize: vertical;
-        }
-
-        .task-spec-textarea {
-            height: 150px;
-            font-family: 'Courier New', monospace;
-        }
-
-        button {
-            background: #2563eb;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-
-        button:hover {
-            background: #1d4ed8;
-        }
-
-        button:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .tasks-section {
-            padding: 20px;
+        .section {
+            margin-bottom: 48px;
         }
 
         .section-title {
             font-size: 18px;
             font-weight: 600;
-            margin-bottom: 15px;
-            color: #111827;
+            color: #ffffff;
+            margin-bottom: 24px;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
+        .form-grid {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 24px;
         }
 
-        th,
-        td {
-            text-align: left;
-            padding: 12px 8px;
-            border-bottom: 1px solid #e5e7eb;
+        .form-group {
+            display: flex;
+            flex-direction: column;
         }
 
-        th {
-            background-color: #f9fafb;
-            font-weight: 600;
-            color: #374151;
-        }
-
-        tr:hover {
-            background-color: #f9fafb;
-            cursor: pointer;
-        }
-
-        .status {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
+        label {
+            font-size: 14px;
             font-weight: 500;
+            color: #cccccc;
+            margin-bottom: 8px;
         }
 
-        .status.pending {
-            background: #fef3c7;
-            color: #92400e;
+        input,
+        select,
+        textarea {
+            background: #2a2a2a;
+            border: 1px solid #444444;
+            border-radius: 4px;
+            padding: 12px;
+            font-size: 14px;
+            color: #ffffff;
+            font-family: inherit;
         }
 
-        .status.running {
-            background: #dbeafe;
-            color: #1e40af;
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #666666;
         }
 
-        .status.completed {
-            background: #d1fae5;
-            color: #065f46;
+        textarea {
+            resize: vertical;
+            min-height: 80px;
         }
 
-        .status.failed {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .input-preview {
-            max-width: 300px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .refresh-btn {
-            background: #059669;
-            margin-left: 10px;
-        }
-
-        .refresh-btn:hover {
-            background: #047857;
+        .task-spec-textarea {
+            min-height: 120px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
         }
 
         .checkbox-group {
             display: flex;
             align-items: center;
             gap: 8px;
+            margin: 16px 0;
         }
 
         .checkbox-group input[type="checkbox"] {
             width: auto;
+            margin: 0;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: #ff6b35;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover {
+            background: #e55a2b;
+        }
+
+        .btn:disabled {
+            background: #555555;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #444444;
+            color: #cccccc;
+        }
+
+        .btn-secondary:hover {
+            background: #555555;
+        }
+
+        .tasks-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .table-container {
+            background: #2a2a2a;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #333333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid #333333;
+        }
+
+        th {
+            background: #1f1f1f;
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            color: #cccccc;
+            font-size: 14px;
+        }
+
+        tbody tr:hover {
+            background: #333333;
+            cursor: pointer;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status.pending {
+            background: #4a3728;
+            color: #f59e0b;
+        }
+
+        .status.running {
+            background: #1e3a8a;
+            color: #60a5fa;
+        }
+
+        .status.completed {
+            background: #064e3b;
+            color: #10b981;
+        }
+
+        .status.failed {
+            background: #7f1d1d;
+            color: #f87171;
+        }
+
+        .input-preview {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            color: #888888;
+        }
+
+        .footer {
+            padding: 24px;
+            border-top: 1px solid #333333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .toggle-group {
+            display: flex;
+            background: #2a2a2a;
+            border: 1px solid #444444;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .toggle-option {
+            padding: 8px 16px;
+            background: none;
+            border: none;
+            color: #888888;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-option.active {
+            background: #ff6b35;
+            color: #ffffff;
+        }
+
+        .toggle-option:not(.active):hover {
+            color: #cccccc;
+        }
+
+        .api-link {
+            color: #888888;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .api-link:hover {
+            color: #cccccc;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+            }
+
+            .main-content {
+                padding: 24px 16px;
+            }
+
+            .tasks-header {
+                flex-direction: column;
+                gap: 16px;
+                align-items: stretch;
+            }
+
+            .table-container {
+                overflow-x: auto;
+            }
+
+            .footer {
+                flex-direction: column;
+                gap: 16px;
+            }
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <div class="header">
-            <h1>Parallel API Task Manager</h1>
-        </div>
+        <header class="header">
+            <div class="brand">parallel task manager</div>
+        </header>
 
-        <div class="form-section">
-            <form id="taskForm">
-                <div class="form-group">
-                    <label for="apiKey">Parallel API Key:</label>
-                    <input type="password" id="apiKey" name="apiKey" required placeholder="Enter your Parallel API key">
-                </div>
+        <main class="main-content">
+            <section class="section">
+                <h2 class="section-title">Create Task</h2>
+                <form id="taskForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="apiKey">API Key</label>
+                            <input type="password" id="apiKey" name="apiKey" required
+                                placeholder="Enter your Parallel API key">
+                        </div>
 
-                <div class="form-group">
-                    <label for="processor">Processor:</label>
-                    <select id="processor" name="processor" required>
-                        <option value="lite">Lite</option>
-                        <option value="base">Base</option>
-                        <option value="pro">Pro</option>
-                        <option value="core">Core</option>
-                    </select>
-                </div>
+                        <div class="form-group">
+                            <label for="processor">Processor</label>
+                            <select id="processor" name="processor" required>
+                                <option value="lite">lite</option>
+                                <option value="base" selected>base</option>
+                                <option value="pro">pro</option>
+                                <option value="core">core</option>
+                            </select>
+                        </div>
+                    </div>
 
-                <div class="form-group">
-                    <label for="input">Task Input:</label>
-                    <textarea id="input" name="input" required placeholder="Enter your task input here..."></textarea>
-                </div>
+                    <div class="form-group">
+                        <label for="input">Input</label>
+                        <textarea id="input" name="input" required placeholder="Enter your task input..."></textarea>
+                    </div>
 
-                <div class="form-group">
                     <div class="checkbox-group">
                         <input type="checkbox" id="useTaskSpec" name="useTaskSpec">
-                        <label for="useTaskSpec">Use Task Specification</label>
+                        <label for="useTaskSpec">Use task specification</label>
                     </div>
+
+                    <div class="form-group" id="taskSpecGroup" style="display: none;">
+                        <label for="taskSpec">Task Specification (JSON)</label>
+                        <textarea id="taskSpec" name="taskSpec" class="task-spec-textarea"
+                            placeholder='{"output_schema": {"type": "json", "json_schema": {...}}}'></textarea>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="btn">Create Task</button>
+                </form>
+            </section>
+
+            <section class="section">
+                <div class="tasks-header">
+                    <h2 class="section-title">Tasks</h2>
+                    <button type="button" class="btn btn-secondary" onclick="loadTasks()">Refresh</button>
                 </div>
 
-                <div class="form-group" id="taskSpecGroup" style="display: none;">
-                    <label for="taskSpec">Task Specification (JSON):</label>
-                    <textarea id="taskSpec" name="taskSpec" class="task-spec-textarea"
-                        placeholder='{"output_schema": {"type": "json", "json_schema": {...}}}'></textarea>
+                <div class="table-container">
+                    <table id="tasksTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Processor</th>
+                                <th>Status</th>
+                                <th>Input</th>
+                                <th>Created</th>
+                                <th>Completed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tasksBody">
+                            <!-- Tasks will be loaded here -->
+                        </tbody>
+                    </table>
                 </div>
+            </section>
+        </main>
 
-                <button type="submit" id="submitBtn">Create Task</button>
-            </form>
-        </div>
-
-        <div class="tasks-section">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <h2 class="section-title">Tasks</h2>
-                <button type="button" class="refresh-btn" onclick="loadTasks()">Refresh</button>
+        <footer class="footer">
+            <div class="toggle-container">
+                <div class="toggle-group">
+                    <button class="toggle-option active" data-mode="human">HUMAN</button>
+                    <button class="toggle-option" data-mode="machine">MACHINE</button>
+                </div>
             </div>
-            <table id="tasksTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Processor</th>
-                        <th>Status</th>
-                        <th>Input Preview</th>
-                        <th>Created</th>
-                        <th>Completed</th>
-                    </tr>
-                </thead>
-                <tbody id="tasksBody">
-                    <!-- Tasks will be loaded here -->
-                </tbody>
-            </table>
-        </div>
+            <a href="/api/tasks" class="api-link">API Documentation</a>
+        </footer>
     </div>
 
     <script>
-        // Load form data from localStorage
+        // Toggle functionality
+        document.querySelectorAll('.toggle-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.mode === 'machine') {
+                    window.open('/api/tasks', '_blank');
+                } else {
+                    document.querySelectorAll('.toggle-option').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                }
+            });
+        });
+
+        // Form data persistence
         function loadFormData() {
             const formData = localStorage.getItem('taskFormData');
             if (formData) {
@@ -263,7 +431,6 @@
             }
         }
 
-        // Save form data to localStorage
         function saveFormData() {
             const data = {
                 apiKey: document.getElementById('apiKey').value,
@@ -275,7 +442,6 @@
             localStorage.setItem('taskFormData', JSON.stringify(data));
         }
 
-        // Toggle task spec visibility
         function toggleTaskSpec() {
             const useTaskSpec = document.getElementById('useTaskSpec').checked;
             const taskSpecGroup = document.getElementById('taskSpecGroup');
@@ -284,19 +450,18 @@
 
         document.getElementById('useTaskSpec').addEventListener('change', toggleTaskSpec);
 
-        // Save form data whenever inputs change
         document.querySelectorAll('#taskForm input, #taskForm select, #taskForm textarea').forEach(input => {
             input.addEventListener('input', saveFormData);
             input.addEventListener('change', saveFormData);
         });
 
-        // Handle form submission
+        // Form submission
         document.getElementById('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Creating Task...';
+            submitBtn.textContent = 'Creating...';
 
             const formData = new FormData(e.target);
             const taskData = {
@@ -309,7 +474,7 @@
                 try {
                     taskData.taskSpec = JSON.parse(formData.get('taskSpec'));
                 } catch (error) {
-                    alert('Invalid JSON in Task Specification');
+                    alert('Invalid JSON in task specification');
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Create Task';
                     return;
@@ -319,19 +484,16 @@
             try {
                 const response = await fetch('/api/tasks', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(taskData)
                 });
 
                 if (response.ok) {
                     const result = await response.json();
-                    alert(`Task created successfully! ID: ${result.taskId}`);
-                    loadTasks(); // Refresh the tasks list
+                    loadTasks();
                 } else {
                     const error = await response.text();
-                    alert(`Error creating task: ${error}`);
+                    alert(`Error: ${error}`);
                 }
             } catch (error) {
                 alert(`Error: ${error.message}`);
@@ -360,7 +522,7 @@
                         <td><span class="status ${task.status}">${task.status}</span></td>
                         <td class="input-preview">${task.inputPreview}</td>
                         <td>${new Date(task.createdAt).toLocaleString()}</td>
-                        <td>${task.completedAt ? new Date(task.completedAt).toLocaleString() : '-'}</td>
+                        <td>${task.completedAt ? new Date(task.completedAt).toLocaleString() : '—'}</td>
                     `;
 
                     tbody.appendChild(row);
@@ -370,11 +532,9 @@
             }
         }
 
-        // Initialize the page
+        // Initialize
         loadFormData();
         loadTasks();
-
-        // Auto-refresh tasks every 10 seconds
         setInterval(loadTasks, 10000);
     </script>
 </body>
