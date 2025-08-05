@@ -3,7 +3,7 @@
   "name": "parallel-task-runner",
   "main": "worker.js",
   "compatibility_date": "2025-07-14",
-  "assets": { "directory": "./public" },
+  "assets": { "directory": "./" },
   "observability": { "logs": { "enabled": true } },
   "durable_objects": {
     "bindings": [
