@@ -20,6 +20,8 @@
             --text-tertiary: #888888;
             --border: #e5e5e5;
             --brand-orange: #ff6b35;
+            --tooltip-bg: #1a1a1a;
+            --tooltip-text: #ffffff;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -30,6 +32,8 @@
                 --text-secondary: #cccccc;
                 --text-tertiary: #888888;
                 --border: #333333;
+                --tooltip-bg: #ffffff;
+                --tooltip-text: #1a1a1a;
             }
         }
 
@@ -90,6 +94,7 @@
         .form-group {
             display: flex;
             flex-direction: column;
+            position: relative;
         }
 
         label {
@@ -100,7 +105,6 @@
         }
 
         input,
-        select,
         textarea {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
@@ -112,7 +116,6 @@
         }
 
         input:focus,
-        select:focus,
         textarea:focus {
             outline: none;
             border-color: var(--text-secondary);
@@ -126,6 +129,96 @@
         .task-spec {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             min-height: 120px;
+        }
+
+        /* Custom styled select */
+        .select-wrapper {
+            position: relative;
+        }
+
+        .custom-select {
+            appearance: none;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px 40px 12px 12px;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-family: inherit;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .custom-select:focus {
+            outline: none;
+            border-color: var(--text-secondary);
+        }
+
+        .select-arrow {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-secondary);
+        }
+
+        .processor-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .processor-help {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--text-tertiary);
+            color: var(--bg-primary);
+            font-size: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+            position: relative;
+        }
+
+        .processor-tooltip {
+            position: absolute;
+            bottom: 150%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--tooltip-bg);
+            color: var(--tooltip-text);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: nowrap;
+            max-width: 320px;
+            white-space: normal;
+            width: max-content;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .processor-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--tooltip-bg);
+        }
+
+        .processor-help:hover .processor-tooltip {
+            opacity: 1;
+            visibility: visible;
         }
 
         .checkbox {
@@ -235,6 +328,11 @@
             color: #f59e0b;
         }
 
+        .status.queued {
+            background: #4a3728;
+            color: #f59e0b;
+        }
+
         .status.running {
             background: #1e3a8a;
             color: #60a5fa;
@@ -336,6 +434,14 @@
                 flex-direction: column;
                 gap: 16px;
             }
+
+            .processor-tooltip {
+                position: fixed;
+                bottom: auto;
+                left: 50%;
+                transform: translateX(-50%);
+                max-width: 280px;
+            }
         }
     </style>
 </head>
@@ -356,13 +462,34 @@
                             <input type="password" id="apiKey" required placeholder="Enter your Parallel API key">
                         </div>
                         <div class="form-group">
-                            <label for="processor">Processor</label>
-                            <select id="processor" required>
-                                <option value="lite">lite</option>
-                                <option value="base" selected>base</option>
-                                <option value="pro">pro</option>
-                                <option value="core">core</option>
-                            </select>
+                            <div class="processor-info">
+                                <label for="processor">Processor</label>
+                                <div class="processor-help">
+                                    ?
+                                    <div class="processor-tooltip">
+                                        Choose based on task complexity:<br>
+                                        <strong>Lite/Base:</strong> Simple enrichments<br>
+                                        <strong>Core:</strong> Reliable accuracy, ~10 fields<br>
+                                        <strong>Pro/Ultra:</strong> Deep research & reasoning
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="processor" class="custom-select" required>
+                                    <option value="lite">Lite - Basic metadata, low latency (5-45s, $5/1k)</option>
+                                    <option value="base" selected>Base - Standard enrichments (10-80s, $10/1k)</option>
+                                    <option value="core">Core - Cross-referenced research (45-160s, $25/1k)</option>
+                                    <option value="pro">Pro - Exploratory web research (60s-8min, $100/1k)</option>
+                                    <option value="ultra">Ultra - Multi-source deep research (5-12min, $300/1k)</option>
+                                    <option value="ultra2x">Ultra2x - Difficult deep research (8-15min, $600/1k)
+                                    </option>
+                                    <option value="ultra4x">Ultra4x - Very difficult research (8-20min, $1200/1k)
+                                    </option>
+                                    <option value="ultra8x">Ultra8x - Most difficult research (8-20min, $2400/1k)
+                                    </option>
+                                </select>
+                                <span class="select-arrow">▼</span>
+                            </div>
                         </div>
                     </div>
 
@@ -464,7 +591,8 @@
             const taskData = {
                 apiKey: formData.get('apiKey'),
                 processor: formData.get('processor'),
-                input: formData.get('input')
+                input: formData.get('input'),
+                enable_events: true  // Always enable events for SSE
             };
 
             if (document.getElementById('useTaskSpec').checked && formData.get('taskSpec')?.trim()) {
@@ -487,6 +615,9 @@
 
                 if (response.ok) {
                     loadTasks();
+                    // Clear input after successful creation
+                    document.getElementById('input').value = '';
+                    saveFormData();
                 } else {
                     alert(`Error: ${await response.text()}`);
                 }
