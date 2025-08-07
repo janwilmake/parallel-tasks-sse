@@ -213,11 +213,34 @@ export class TaskRunner extends DurableObject {
   constructor(state, env) {
     super(state, env);
     this.env = env;
+    this.state = state;
+
+    // Set initial alarm to prevent timeout
+    this.setKeepAliveAlarm();
+  }
+
+  /** Set an alarm for 10 seconds from now to keep the DO alive */
+  async setKeepAliveAlarm() {
+    const now = Date.now();
+    const alarmTime = now + 10000; // 10 seconds from now
+    await this.state.storage.setAlarm(alarmTime);
+  }
+
+  /** Handle alarm events - reset the alarm to keep DO alive */
+  async alarm() {
+    // Only reset alarm if we have an active task
+    const activeTask = await this.state.storage.get("activeTask");
+    if (activeTask) {
+      await this.setKeepAliveAlarm();
+    }
   }
 
   /** @param {string} taskId @param {any} taskData */
   async runTask(taskId, taskData) {
     try {
+      // Mark this task as active
+      await this.state.storage.put("activeTask", taskId);
+
       // Get the main task manager to report back to
       const taskManagerId = this.env.TASK_MANAGER.idFromName("main");
       const taskManager = this.env.TASK_MANAGER.get(taskManagerId);
@@ -252,6 +275,7 @@ export class TaskRunner extends DurableObject {
           message: `Failed to create task: ${error}`,
         });
         await taskManager.updateTaskStatus(taskId, "failed");
+        await this.cleanupTask();
         return;
       }
 
@@ -278,6 +302,7 @@ export class TaskRunner extends DurableObject {
           message: "Failed to connect to SSE stream",
         });
         await taskManager.updateTaskStatus(taskId, "failed");
+        await this.cleanupTask();
         return;
       }
 
@@ -291,6 +316,7 @@ export class TaskRunner extends DurableObject {
           message: "No readable stream",
         });
         await taskManager.updateTaskStatus(taskId, "failed");
+        await this.cleanupTask();
         return;
       }
 
@@ -329,9 +355,11 @@ export class TaskRunner extends DurableObject {
                       taskData.apiKey,
                       taskManager
                     );
+                    await this.cleanupTask();
                     return; // Exit the function
                   } else if (eventData.status === "failed") {
                     await taskManager.updateTaskStatus(taskId, "failed");
+                    await this.cleanupTask();
                     return; // Exit the function
                   }
                 }
@@ -346,13 +374,21 @@ export class TaskRunner extends DurableObject {
         }
       } finally {
         reader.releaseLock();
+        await this.cleanupTask();
       }
     } catch (error) {
       const taskManagerId = this.env.TASK_MANAGER.idFromName("main");
       const taskManager = this.env.TASK_MANAGER.get(taskManagerId);
       await taskManager.addEvent(taskId, "error", { message: error.message });
       await taskManager.updateTaskStatus(taskId, "failed");
+      await this.cleanupTask();
     }
+  }
+
+  /** Clean up task state and stop keep-alive alarms */
+  async cleanupTask() {
+    await this.state.storage.delete("activeTask");
+    // The alarm will naturally stop setting itself since activeTask is gone
   }
 
   /** @param {string} taskId @param {string} runId @param {string} apiKey @param {any} taskManager */

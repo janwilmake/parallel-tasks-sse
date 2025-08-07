@@ -22,6 +22,8 @@
             --brand-orange: #ff6b35;
             --tooltip-bg: #1a1a1a;
             --tooltip-text: #ffffff;
+            --link-color: #0066cc;
+            --link-hover: #0052a3;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -34,6 +36,8 @@
                 --border: #333333;
                 --tooltip-bg: #ffffff;
                 --tooltip-text: #1a1a1a;
+                --link-color: #66b3ff;
+                --link-hover: #4da6ff;
             }
         }
 
@@ -127,6 +131,10 @@
             position: relative;
         }
 
+        .form-group-with-link {
+            position: relative;
+        }
+
         label {
             font-size: 14px;
             font-weight: 500;
@@ -159,6 +167,33 @@
         .task-spec {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             min-height: 120px;
+        }
+
+        .api-key-link {
+            margin-top: 6px;
+            font-size: 12px;
+        }
+
+        .api-key-link a {
+            color: var(--link-color);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .api-key-link a:hover {
+            color: var(--link-hover);
+            background: var(--bg-secondary);
+        }
+
+        .api-key-link a::after {
+            content: '↗';
+            font-size: 10px;
+            opacity: 0.7;
         }
 
         /* Custom styled select */
@@ -455,18 +490,16 @@
             border-radius: 4px;
             font-size: 13px;
             margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .radio-option.disabled {
-            opacity: 0.5;
+        .warning::before {
+            content: '⚠';
+            font-size: 16px;
+            flex-shrink: 0;
         }
-
-        .radio-option.disabled input,
-        .radio-option.disabled label {
-            cursor: not-allowed;
-        }
-
-
 
         @media (max-width: 768px) {
             .main {
@@ -532,13 +565,17 @@
                         granular field-level citations.</p>
                 </div>
 
-
                 <form id="taskForm" class="form">
                     <div class="form-row">
-                        <div class="form-group">
+                        <div class="form-group form-group-with-link">
                             <label for="apiKey">API Key</label>
                             <input type="password" id="apiKey" name="apiKey" required
                                 placeholder="Enter your Parallel API key">
+                            <div class="api-key-link">
+                                <a href="https://platform.parallel.ai/settings?tab=api-keys" target="_blank">
+                                    Get your API key
+                                </a>
+                            </div>
                         </div>
                         <div class="form-group">
                             <div class="processor-info">
@@ -584,7 +621,7 @@
                                 <input type="radio" id="schemaText" name="schemaType" value="text">
                                 <label for="schemaText">Text</label>
                             </div>
-                            <div class="radio-option" id="autoOption">
+                            <div class="radio-option">
                                 <input type="radio" id="schemaAuto" name="schemaType" value="auto" checked>
                                 <label for="schemaAuto">Auto</label>
                             </div>
@@ -593,11 +630,12 @@
                                 <label for="schemaObject">Object</label>
                             </div>
                         </div>
-                        <div id="autoModeWarning" class="warning hidden">
-                            Auto mode requires Pro, Ultra, or Ultra+ processors for Deep Research functionality.
-                        </div>
                     </div>
 
+                    <div id="autoModeWarning" class="warning hidden">
+                        Auto mode requires Pro, Ultra, or Ultra+ processors for Deep Research functionality. Please
+                        select a Pro or Ultra processor to use Auto mode.
+                    </div>
 
                     <div class="form-group hidden" id="textDescriptionGroup">
                         <label for="textDescription">Text Description</label>
@@ -692,39 +730,32 @@
             document.getElementById('objectSchemaGroup').classList.toggle('hidden', schemaType !== 'object');
         }
 
-        function validateProcessorSchemaCombo() {
+        function checkAutoModeCompatibility() {
             const processor = document.getElementById('processor').value;
             const schemaType = document.querySelector('input[name="schemaType"]:checked')?.value;
-            const autoRadio = document.getElementById('schemaAuto');
-            const autoOption = document.getElementById('autoOption');
             const warningDiv = document.getElementById('autoModeWarning');
 
             const isHighComputeProcessor = ['pro', 'ultra', 'ultra2x', 'ultra4x', 'ultra8x'].includes(processor);
 
-            // Enable/disable auto mode based on processor
-            autoRadio.disabled = !isHighComputeProcessor;
-            autoOption.classList.toggle('disabled', !isHighComputeProcessor);
+            // Show warning only if auto mode is selected but processor doesn't support it
+            const shouldShowWarning = schemaType === 'auto' && !isHighComputeProcessor;
+            warningDiv.classList.toggle('hidden', !shouldShowWarning);
 
-            // Show/hide warning
-            warningDiv.classList.toggle('hidden', isHighComputeProcessor);
-
-            // If auto is selected but processor doesn't support it, switch to text
-            if (schemaType === 'auto' && !isHighComputeProcessor) {
-                document.getElementById('schemaText').checked = true;
-                toggleSchemaInputs();
-                saveFormData();
-            }
+            return isHighComputeProcessor || schemaType !== 'auto';
         }
-
 
         // Event listeners
         document.querySelectorAll('input[name="schemaType"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 toggleSchemaInputs();
-                validateProcessorSchemaCombo();
-
+                checkAutoModeCompatibility();
                 saveFormData();
             });
+        });
+
+        document.getElementById('processor').addEventListener('change', () => {
+            checkAutoModeCompatibility();
+            saveFormData();
         });
 
         document.querySelectorAll('#taskForm input, #taskForm select, #taskForm textarea')
@@ -733,6 +764,12 @@
         // Form submission
         document.getElementById('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+
+            // Check compatibility before submission
+            if (!checkAutoModeCompatibility()) {
+                return; // Don't submit if there's a compatibility issue
+            }
+
             const btn = e.target.querySelector('button');
             btn.disabled = true;
             btn.textContent = 'Creating...';
@@ -832,11 +869,9 @@
             }
         }
 
-
-
         // Initialize
         loadFormData();
-        validateProcessorSchemaCombo();
+        checkAutoModeCompatibility();
         loadTasks();
         setInterval(loadTasks, 10000);
     </script>
