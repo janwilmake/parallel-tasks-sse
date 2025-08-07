@@ -79,6 +79,36 @@
             margin-bottom: 24px;
         }
 
+        .modes-info {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 32px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .modes-info h4 {
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .modes-info ul {
+            margin-left: 16px;
+            margin-bottom: 16px;
+        }
+
+        .modes-info li {
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        .modes-info strong {
+            color: var(--text-primary);
+        }
+
         .form {
             display: grid;
             gap: 20px;
@@ -221,21 +251,28 @@
             visibility: visible;
         }
 
-        .checkbox {
+        .radio-group {
+            display: flex;
+            gap: 24px;
+            margin: 12px 0;
+        }
+
+        .radio-option {
             display: flex;
             align-items: center;
             gap: 8px;
-            margin: 16px 0;
         }
 
-        .checkbox input {
+        .radio-option input[type="radio"] {
             width: auto;
             margin: 0;
         }
 
-        .checkbox label {
+        .radio-option label {
             margin: 0;
             font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
         }
 
         .btn {
@@ -411,6 +448,26 @@
             display: none;
         }
 
+        .warning {
+            background: #7f1d1d;
+            color: #f87171;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin: 8px 0;
+        }
+
+        .radio-option.disabled {
+            opacity: 0.5;
+        }
+
+        .radio-option.disabled input,
+        .radio-option.disabled label {
+            cursor: not-allowed;
+        }
+
+
+
         @media (max-width: 768px) {
             .main {
                 padding: 24px 16px;
@@ -418,6 +475,11 @@
 
             .form-row {
                 grid-template-columns: 1fr;
+            }
+
+            .radio-group {
+                flex-direction: column;
+                gap: 12px;
             }
 
             .tasks-header {
@@ -455,11 +517,28 @@
         <main class="main">
             <section class="section">
                 <h2 class="section-title">Create Task</h2>
+
+                <div class="modes-info">
+                    <h4>Output Schema Modes</h4>
+                    <ul>
+                        <li><strong>Text:</strong> Simple narrative responses for explanatory answers and summaries</li>
+                        <li><strong>Auto:</strong> System generates optimal JSON structure for comprehensive research
+                            reports with detailed citations <em>(Pro/Ultra processors only)</em></li>
+                        <li><strong>Object:</strong> You define exact JSON structure for consistent, systematic data
+                            processing</li>
+                    </ul>
+                    <p><strong>Note:</strong> This system uses Server-Sent Events (SSE) to stream real-time progress
+                        updates during task execution. Auto mode provides the most detailed basis information with
+                        granular field-level citations.</p>
+                </div>
+
+
                 <form id="taskForm" class="form">
                     <div class="form-row">
                         <div class="form-group">
                             <label for="apiKey">API Key</label>
-                            <input type="password" id="apiKey" required placeholder="Enter your Parallel API key">
+                            <input type="password" id="apiKey" name="apiKey" required
+                                placeholder="Enter your Parallel API key">
                         </div>
                         <div class="form-group">
                             <div class="processor-info">
@@ -475,7 +554,7 @@
                                 </div>
                             </div>
                             <div class="select-wrapper">
-                                <select id="processor" class="custom-select" required>
+                                <select id="processor" name="processor" class="custom-select" required>
                                     <option value="lite">Lite - Basic metadata, low latency (5-45s, $5/1k)</option>
                                     <option value="base" selected>Base - Standard enrichments (10-80s, $10/1k)</option>
                                     <option value="core">Core - Cross-referenced research (45-160s, $25/1k)</option>
@@ -495,18 +574,41 @@
 
                     <div class="form-group">
                         <label for="input">Input</label>
-                        <textarea id="input" required placeholder="Enter your task input..."></textarea>
+                        <textarea id="input" name="input" required placeholder="Enter your task input..."></textarea>
                     </div>
 
-                    <div class="checkbox">
-                        <input type="checkbox" id="useTaskSpec">
-                        <label for="useTaskSpec">Use task specification</label>
+                    <div class="form-group">
+                        <label>Output Schema Type</label>
+                        <div class="radio-group">
+                            <div class="radio-option">
+                                <input type="radio" id="schemaText" name="schemaType" value="text">
+                                <label for="schemaText">Text</label>
+                            </div>
+                            <div class="radio-option" id="autoOption">
+                                <input type="radio" id="schemaAuto" name="schemaType" value="auto" checked>
+                                <label for="schemaAuto">Auto</label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" id="schemaObject" name="schemaType" value="object">
+                                <label for="schemaObject">Object</label>
+                            </div>
+                        </div>
+                        <div id="autoModeWarning" class="warning hidden">
+                            Auto mode requires Pro, Ultra, or Ultra+ processors for Deep Research functionality.
+                        </div>
                     </div>
 
-                    <div class="form-group hidden" id="taskSpecGroup">
-                        <label for="taskSpec">Task Specification (JSON)</label>
-                        <textarea id="taskSpec" class="task-spec"
-                            placeholder='{"output_schema": {"type": "json", "json_schema": {...}}}'></textarea>
+
+                    <div class="form-group hidden" id="textDescriptionGroup">
+                        <label for="textDescription">Text Description</label>
+                        <textarea id="textDescription" name="textDescription"
+                            placeholder="Describe the desired text output..."></textarea>
+                    </div>
+
+                    <div class="form-group hidden" id="objectSchemaGroup">
+                        <label for="objectSchema">JSON Schema</label>
+                        <textarea id="objectSchema" name="objectSchema" class="task-spec"
+                            placeholder='{"type": "object", "properties": {"field1": {"type": "string", "description": "..."}}, "required": ["field1"], "additionalProperties": false}'></textarea>
                     </div>
 
                     <button type="submit" class="btn">Create Task</button>
@@ -555,28 +657,76 @@
             Object.entries(data).forEach(([key, value]) => {
                 const el = document.getElementById(key);
                 if (!el) return;
-                if (el.type === 'checkbox') el.checked = value;
-                else el.value = value;
+                if (el.type === 'radio') {
+                    if (el.value === value) el.checked = true;
+                } else {
+                    el.value = value;
+                }
             });
-            toggleTaskSpec();
+
+            // Handle radio buttons for schema type
+            if (data.schemaType) {
+                document.querySelector(`input[name="schemaType"][value="${data.schemaType}"]`).checked = true;
+            }
+
+            toggleSchemaInputs();
         }
 
         function saveFormData() {
             const data = {};
-            ['apiKey', 'processor', 'input', 'taskSpec'].forEach(id => {
-                data[id] = document.getElementById(id).value;
+            ['apiKey', 'processor', 'input', 'textDescription', 'objectSchema'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) data[id] = el.value;
             });
-            data.useTaskSpec = document.getElementById('useTaskSpec').checked;
+
+            const schemaType = document.querySelector('input[name="schemaType"]:checked');
+            if (schemaType) data.schemaType = schemaType.value;
+
             localStorage.setItem('taskFormData', JSON.stringify(data));
         }
 
-        function toggleTaskSpec() {
-            const show = document.getElementById('useTaskSpec').checked;
-            document.getElementById('taskSpecGroup').classList.toggle('hidden', !show);
+        function toggleSchemaInputs() {
+            const schemaType = document.querySelector('input[name="schemaType"]:checked')?.value;
+
+            document.getElementById('textDescriptionGroup').classList.toggle('hidden', schemaType !== 'text');
+            document.getElementById('objectSchemaGroup').classList.toggle('hidden', schemaType !== 'object');
         }
 
+        function validateProcessorSchemaCombo() {
+            const processor = document.getElementById('processor').value;
+            const schemaType = document.querySelector('input[name="schemaType"]:checked')?.value;
+            const autoRadio = document.getElementById('schemaAuto');
+            const autoOption = document.getElementById('autoOption');
+            const warningDiv = document.getElementById('autoModeWarning');
+
+            const isHighComputeProcessor = ['pro', 'ultra', 'ultra2x', 'ultra4x', 'ultra8x'].includes(processor);
+
+            // Enable/disable auto mode based on processor
+            autoRadio.disabled = !isHighComputeProcessor;
+            autoOption.classList.toggle('disabled', !isHighComputeProcessor);
+
+            // Show/hide warning
+            warningDiv.classList.toggle('hidden', isHighComputeProcessor);
+
+            // If auto is selected but processor doesn't support it, switch to text
+            if (schemaType === 'auto' && !isHighComputeProcessor) {
+                document.getElementById('schemaText').checked = true;
+                toggleSchemaInputs();
+                saveFormData();
+            }
+        }
+
+
         // Event listeners
-        document.getElementById('useTaskSpec').addEventListener('change', toggleTaskSpec);
+        document.querySelectorAll('input[name="schemaType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                toggleSchemaInputs();
+                validateProcessorSchemaCombo();
+
+                saveFormData();
+            });
+        });
+
         document.querySelectorAll('#taskForm input, #taskForm select, #taskForm textarea')
             .forEach(el => el.addEventListener('input', saveFormData));
 
@@ -588,18 +738,49 @@
             btn.textContent = 'Creating...';
 
             const formData = new FormData(e.target);
+            const schemaType = document.querySelector('input[name="schemaType"]:checked').value;
+
             const taskData = {
                 apiKey: formData.get('apiKey'),
                 processor: formData.get('processor'),
                 input: formData.get('input'),
-                enable_events: true  // Always enable events for SSE
+                enable_events: true
             };
 
-            if (document.getElementById('useTaskSpec').checked && formData.get('taskSpec')?.trim()) {
-                try {
-                    taskData.taskSpec = JSON.parse(formData.get('taskSpec'));
-                } catch (error) {
-                    alert('Invalid JSON in task specification');
+            // Build task spec based on schema type
+            if (schemaType === 'text') {
+                const description = formData.get('textDescription')?.trim();
+                taskData.taskSpec = {
+                    output_schema: {
+                        type: 'text',
+                        description: description || 'Provide a comprehensive text response'
+                    }
+                };
+            } else if (schemaType === 'auto') {
+                taskData.taskSpec = {
+                    output_schema: {
+                        type: 'auto'
+                    }
+                };
+            } else if (schemaType === 'object') {
+                const objectSchema = formData.get('objectSchema')?.trim();
+                if (objectSchema) {
+                    try {
+                        const parsedSchema = JSON.parse(objectSchema);
+                        taskData.taskSpec = {
+                            output_schema: {
+                                type: 'json',
+                                json_schema: parsedSchema
+                            }
+                        };
+                    } catch (error) {
+                        alert('Invalid JSON in object schema');
+                        btn.disabled = false;
+                        btn.textContent = 'Create Task';
+                        return;
+                    }
+                } else {
+                    alert('Object schema is required when using Object mode');
                     btn.disabled = false;
                     btn.textContent = 'Create Task';
                     return;
@@ -651,8 +832,11 @@
             }
         }
 
+
+
         // Initialize
         loadFormData();
+        validateProcessorSchemaCombo();
         loadTasks();
         setInterval(loadTasks, 10000);
     </script>

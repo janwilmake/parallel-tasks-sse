@@ -74,7 +74,7 @@ export class TaskManager extends DurableObject {
   async createTask(taskData) {
     const taskId = crypto.randomUUID();
     const now = Date.now();
-
+    console.log({ taskData });
     // Store task in database
     this.sql.exec(
       `INSERT INTO tasks (id, api_key, processor, input, task_spec, created_at) 
