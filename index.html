@@ -547,6 +547,7 @@
             <div class="brand">parallel task manager</div>
         </header>
 
+        <script src="convert.js"></script>
         <main class="main">
             <section class="section">
                 <h2 class="section-title">Create Task</h2>
@@ -669,6 +670,8 @@
                                 <th>Input</th>
                                 <th>Created</th>
                                 <th>Completed</th>
+                                <th>JSON</th>
+                                <th>Table</th>
                             </tr>
                         </thead>
                         <tbody id="tasksBody">
@@ -855,13 +858,15 @@
                 const tbody = document.getElementById('tasksBody');
 
                 tbody.innerHTML = tasks.map(task => `
-                    <tr onclick="window.open('/task/${task.id}', '_blank')">
+                    <tr>
                         <td>${task.id.substring(0, 8)}...</td>
                         <td>${task.processor}</td>
                         <td><span class="status ${task.status}">${task.status}</span></td>
                         <td class="input-preview">${task.inputPreview}</td>
                         <td>${new Date(task.createdAt).toLocaleString()}</td>
                         <td>${task.completedAt ? new Date(task.completedAt).toLocaleString() : '—'}</td>
+                        <td onclick="window.open('/task/${task.id}', '_blank')">JSON</td>
+                        <td onclick="convertUrl('/task/${task.id}')">Table</td>
                     </tr>
                 `).join('');
             } catch (error) {
