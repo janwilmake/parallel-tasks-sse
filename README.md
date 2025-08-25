@@ -1,151 +1,62 @@
-# Parallel Task Manager with SSE Streaming
+# Building a Parallel Task Playground with streaming
 
-A comprehensive task management system for the Parallel Task API with real-time Server-Sent Events (SSE) streaming support. This application demonstrates all three output schema modes and provides live progress monitoring.
+## Introduction
 
-## Features
+Parallel has a few [great playgrounds](https://platform.parallel.ai/play) for deep research and enrichment, but how does it work under the hood, and how can we build one ourselves?
 
-### 1. Three Output Schema Modes
+This recipe highlights:
 
-**Text Mode**
+- how the different core features of the Task API can be used
+- what the different task modes are
+- how we use streaming events to show the user intermittent updates
+- how we can render the results into a simple UI.
 
-- Simple narrative responses for explanatory answers and summaries
-- Ideal for questions requiring descriptive content rather than structured data
-- Example: "Provide a brief overview of Tesla's business model"
+The key difference of this "playground" to the official Parallel playgrounds is that here, you get a better feel of how the actual API works, and it's possible to see the results in both JSON and as a table.
 
-**Auto Mode**
+Check out the playground [here](https://sse.p0web.com). After entering your API key, you'll be able to submit any task with any configuration. The results will be streamed to a JSON blob that is publicly accessible to anyone.
 
-- System automatically generates optimal JSON structure based on your research query
-- Best for comprehensive research reports and exploratory analysis
-- Provides detailed field-level citations and verification
-- Example: "Create a market research report on the EV industry"
+For this recipe, we're using [Cloudflare Workers](https://workers.cloudflare.com) with [Durable Objects](https://developers.cloudflare.com/durable-objects/) to deploy this app into the Cloud.
 
-**Object Mode**
+## Concepts
 
-- You define exact JSON schema with specific fields, types, and validation
-- Perfect for systematic data processing and consistent outputs across multiple queries
-- Example: CRM enrichment, due diligence workflows
+### Durable Objects on Cloudflare Workers
 
-### 2. SSE Streaming Mode
+Cloudflare Workers is a serverless platform that allows to create highly scalable stateless APIs and websites (static assets) with ease. Durable Objects is one of Cloudflare's most core primitves on which a lot of other Cloudflare services got built - it allows adding stateful objects to your serverless apps because it allows creating an unlimited amount of tiny SQLite databases. It also allows making ongoing activity in the worker addressable because every durable object can have its own identifier.
 
-- **Real-time Events**: Captures and displays live progress updates during task execution
-- **Event Storage**: All SSE events are stored in SQLite for complete audit trails
-- **Status Monitoring**: Watch tasks progress from creation to completion
-- **Auto-refresh**: Task list updates automatically every 10 seconds
+What's important is that we want to be able to run an infinite amount of tasks in Parallel. We also want the user to be able to leave the website and come back any time to see the progress. This is where durable objects come in. Where a regular cloudflare worker is limited in how long the requests can take and will stop executing when the user aborts the connection, durable objects can keep going after even if the user isn't connected to it. Even with DO's you'll run into the problem that a regular DO times out [after using 30 seconds of CPU](https://developers.cloudflare.com/durable-objects/platform/limits/). However, we can reset this limitation by calling an [alarm](https://developers.cloudflare.com/durable-objects/api/alarms/) during task streaming. Every time an alarm is ran, the CPU limitation is reset.
 
-### 3. Output Basis & Verification
+Would a single durable object be enough? No. We'd run into the Cloudflare limitation of max 6 concurrent fetch requests. This would mean we could only receive streaming updates for 6 tasks concurrently, which wouldn't be very scalable, a single user can already exceed this. This is why we'll use a master-slave architecture where there's a `TaskManager` DO that maintains all state, and a `TaskRunner` that executes a task, maintaining the streaming connecion with the Parallel API.
 
-The system provides comprehensive verification through the "basis" object:
+### Parallel Tasks with SSE
 
-**Text Mode Basis**: Basic citations and reasoning for the text response
+Tasks in Parallel can take up to an hour, and with [streaming updates](https://docs.parallel.ai/task-api/features/task-sse) it's possible to get intermediate status updates during task execution. This allows you to inform the user what's happening as the task is being executed, something that's often a great way to improve UX.
 
-**Auto Mode Basis**:
+We're using 3 APIs in this recipe:
 
-- Granular field-level citations using nested notation (e.g., `company_profiles.0.revenue`)
-- Detailed excerpts from source materials
-- Calibrated confidence scores for each field
-- Comprehensive reasoning for every data point
+1. The [Create Task Run API](https://docs.parallel.ai/api-reference/task-api-v1/create-task-run) to create the task
+2. The [Events API](https://docs.parallel.ai/task-api/features/task-sse) to receive events
+3. The [Task Result API](https://docs.parallel.ai/api-reference/task-api-v1/retrieve-task-run-result) to receive the final result.
 
-**Object Mode Basis**: Citations mapped to your predefined schema fields
+It's important to note that event streams only remain open for 570 seconds tops, after which they'll be automatically closed. Because a task can take maximum up to an hour, we'll need to reopen the stream request every time it gets closed, until we're in a terminal state (completed, failed or cancelled).
 
-## Architecture
+There are three Task output modes that are specified in `task_spec.output_schema.type`: `text`, `auto`, or `json`. Text returns a single string as output, JSON returns a JSON object in a pre-specified shape, and auto returns a JSON object without having to specify the exact shape. Auto is great for deep research tasks to get more fine-grained output basis, while text or JSON is better if you are doing multiple tasks for enrichment of one or multiple predetermined datapoints.
 
-- **TaskManager DO**: Main durable object storing tasks, events, and results in SQLite
-- **TaskRunner DO**: Handles individual task creation and SSE streaming (one instance per task)
-- **Static HTML**: Clean interface for task creation and monitoring
+## Fontend
 
-## Database Schema
+After the backend-architecutre is there, the frontend was easy. It just needs a form to submit an API key and a new task, a list to view all tasks in our database, and buttons to show the tasks as JSON or as a table.
 
-```sql
--- Task metadata and status
-CREATE TABLE tasks (
-  id TEXT PRIMARY KEY,
-  api_key TEXT NOT NULL,
-  processor TEXT NOT NULL,
-  input TEXT NOT NULL,
-  task_spec TEXT,
-  run_id TEXT,
-  status TEXT DEFAULT 'pending',
-  created_at INTEGER NOT NULL,
-  completed_at INTEGER,
-  result TEXT
-);
-
--- All SSE events received for each task
-CREATE TABLE task_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  event_data TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  FOREIGN KEY (task_id) REFERENCES tasks (id)
-);
-```
-
-## API Endpoints
+For this I set up the API as follows:
 
 - `POST /api/tasks`: Create new task with chosen schema mode
 - `GET /api/tasks`: List all tasks with status and metadata
-- `GET /task/{id}`: HTML page showing complete task details and event history
+- `GET /task/{id}`: JSON showing complete task details and event history
 
-## Usage Examples
+The frontend can now be built using a single HTML file that uses these three endpoints. Using frameworks like React we can potentially make a bit more composable, but for this example that's not really needed. That's really all there is to it! Our final HTML just has [560 lines of code](https://github.com/janwilmake/parallel-tasks-sse/blob/main/index.html)
 
-### Text Mode
+## Building this recipe
 
-```json
-{
-  "apiKey": "your-key",
-  "processor": "base",
-  "input": "Tesla",
-  "taskSpec": {
-    "output_schema": {
-      "type": "text",
-      "description": "Brief company overview including history and main products"
-    }
-  }
-}
-```
+Building the recipe was straightforward - I collected all context from the docs and api reference by going to the above mentioned API and doc pages and appending `.md` to the URL. Also, I used [this Cloudflare system prompt](https://flaredream.com/system-ts.md) to ensure my LLM understands Cloudflare Durable Objects, and this [branding prompt](https://assets.p0web.com/llms.txt) to ensure I followed the Parallel style-guide. After describing what needed to be built, Claude Sonnet was able to pretty much one-shot it. See [the cookbook](https://github.com/parallel-web/parallel-cookbook) for more information on the methodology here.
 
-### Auto Mode
+## Result
 
-```json
-{
-  "apiKey": "your-key",
-  "processor": "ultra",
-  "input": "Comprehensive analysis of Tesla including financials, competitors, and market position",
-  "taskSpec": {
-    "output_schema": {
-      "type": "auto"
-    }
-  }
-}
-```
-
-### Object Mode
-
-```json
-{
-  "apiKey": "your-key",
-  "processor": "core",
-  "input": "Tesla",
-  "taskSpec": {
-    "output_schema": {
-      "type": "json",
-      "json_schema": {
-        "type": "object",
-        "properties": {
-          "company_name": {
-            "type": "string",
-            "description": "Full company name"
-          },
-          "ceo": { "type": "string", "description": "Current CEO name" },
-          "stock_ticker": { "type": "string", "description": "Stock symbol" }
-        },
-        "required": ["company_name", "ceo", "stock_ticker"],
-        "additionalProperties": false
-      }
-    }
-  }
-}
-```
-
-All modes support real-time SSE streaming for progress monitoring and provide detailed basis information for verification and transparency.
+You can view the result on https://sse.p0web.com.
