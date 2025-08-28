@@ -1,5 +1,8 @@
 # Building a Parallel Task Playground with streaming
 
+> [!NOTE]
+> moved to [official location](https://github.com/parallel-web/parallel-cookbook/tree/main/typescript-recipes/parallel-tasks-sse)
+
 ## Introduction
 
 Parallel has a few [great playgrounds](https://platform.parallel.ai/play) for deep research and enrichment, but how does it work under the hood, and how can we build one ourselves?
